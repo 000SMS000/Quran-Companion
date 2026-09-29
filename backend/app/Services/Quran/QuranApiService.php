@@ -27,7 +27,10 @@ class QuranApiService
         return $this->http
             ->baseUrl($this->baseUrl())
             ->acceptJson()
-            ->timeout((int) config('quran.timeout', 10));
+            ->withOptions([
+                'force_ip_resolve' => 'v4',
+            ])
+            ->timeout((int) config('quran.timeout', 30));
     }
 
     public function getSurahs(): array
@@ -40,33 +43,95 @@ class QuranApiService
     }
 
     public function getSurah(
-        int $number,
-        ?string $translationEdition = null,
-        ?string $audioEdition = null,
-    ): array {
-        $translationEdition ??= (string) config('quran.default_translation');
-        $audioEdition ??= (string) config('quran.default_audio');
+    int $number,
+    ?string $translationEdition = null,
+    ?string $audioEdition = null,
+): array {
+    $translationEdition ??= (string) config('quran.default_translation');
+    $audioEdition ??= (string) config('quran.default_audio');
 
-        $cacheKey = sprintf(
-            'quran.surah.%d.%s.%s',
-            $number,
-            $translationEdition,
-            $audioEdition,
+    $cacheKey = sprintf(
+        'quran.surah.%d.%s.%s',
+        $number,
+        $translationEdition,
+        $audioEdition,
+    );
+
+    return Cache::remember($cacheKey, now()->addHours(12), function () use (
+        $number,
+        $translationEdition,
+        $audioEdition
+    ) {
+        // Arabic Quran text.
+        $arabic = $this->get('/surah/'.$number);
+
+        // Translation.
+        $translation = $this->get(
+            '/surah/'.$number.'/editions/'.$translationEdition
         );
 
-        return Cache::remember($cacheKey, now()->addHours(12), function () use ($number, $translationEdition, $audioEdition) {
-            $editions = array_values(array_filter([
-                'quran-uthmani',
-                $translationEdition,
-                $audioEdition,
-            ]));
+        return $this->normalizeSurahData(
+            $arabic,
+            $translation,
+            $audioEdition
+        );
+    });
+}
 
-            $data = $this->get('/surah/'.$number.'/editions/'.implode(',', $editions));
+    protected function normalizeSurahData(
+    array $arabic,
+    array $translation,
+    string $audioEdition,
+): array {
+    return [
+        ...$this->normalizeSurahSummary($arabic),
 
-            return $this->normalizeSurahWithEditions($data);
-        });
-    }
+        'edition' => $this->normalizeEdition(
+            $arabic['edition'] ?? []
+        ),
 
+        'translationEdition' => $this->normalizeEdition(
+            $translation['edition'] ?? []
+        ),
+
+        'audioEdition' => [
+            'identifier' => $audioEdition,
+            'format' => 'audio',
+        ],
+
+        'ayahs' => collect($arabic['ayahs'] ?? [])
+            ->map(function (array $ayah, int $index) use (
+                $translation,
+                $audioEdition
+            ) {
+                $translationAyah = $translation['ayahs'][$index] ?? null;
+
+                return [
+                    'number' => $ayah['number'] ?? null,
+                    'numberInSurah' => $ayah['numberInSurah'] ?? null,
+                    'text' => $ayah['text'] ?? null,
+                    'juz' => $ayah['juz'] ?? null,
+                    'page' => $ayah['page'] ?? null,
+                    'sajda' => $ayah['sajda'] ?? false,
+
+                    'translation' => $translationAyah ? [
+                        'text' => $translationAyah['text'] ?? null,
+                    ] : null,
+
+                    'audio' => [
+                        'url' => sprintf(
+                            'https://cdn.islamic.network/quran/audio/128/%s/%d.mp3',
+                            $audioEdition,
+                            $ayah['number']
+                        ),
+                        'secondary' => [],
+                    ],
+                ];
+            })
+            ->values()
+            ->all(),
+    ];
+}
     public function getEditions(array $filters = []): array
     {
         $query = array_filter([
@@ -118,18 +183,24 @@ class QuranApiService
         try {
             $response = $this->client()->get($path, $query)->throw();
             $payload = $response->json();
-        } catch (ConnectionException) {
-            throw new RuntimeException('Unable to connect to the Quran data provider.', 503);
+        } catch (ConnectionException $exception) {
+            throw new RuntimeException(
+                'Quran API connection failed: '.$exception->getMessage(),
+                503
+            );
         } catch (RequestException $exception) {
             $status = $exception->response?->status() ?: 502;
             $message = $exception->response?->json('data')
                 ?: $exception->response?->json('message')
                 ?: 'The Quran data provider returned an error.';
 
-            throw new RuntimeException((string) $message, $status);
-        } catch (Throwable) {
-            throw new RuntimeException('The Quran service is temporarily unavailable.', 502);
-        }
+    throw new RuntimeException((string) $message, $status);
+} catch (Throwable) {
+    throw new RuntimeException(
+        'The Quran service is temporarily unavailable.',
+        502
+    );
+}
 
         if (($payload['code'] ?? null) !== 200 || ! array_key_exists('data', $payload)) {
             throw new RuntimeException('The Quran data provider returned an unexpected response.', 502);
