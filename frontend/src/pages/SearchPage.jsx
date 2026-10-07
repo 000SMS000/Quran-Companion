@@ -95,7 +95,7 @@ function SearchPage() {
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <Link
-                        to={`/surah/${match.surah?.number}`}
+                        to={`/surah/${match.surah?.number}?ayah=${match.numberInSurah}`}
                         className="font-semibold text-emerald-800 hover:text-emerald-950 dark:text-emerald-300 dark:hover:text-emerald-100"
                       >
                         {match.surah?.englishName} · Ayah {match.numberInSurah}

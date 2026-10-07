@@ -1,78 +1,120 @@
-import { Bookmark, Check, Copy, Play } from 'lucide-react';
-import { useState } from 'react';
+import { useState } from "react";
+import { Bookmark, Check, Copy, Play } from "lucide-react";
 
-function AyahCard({ ayah, surahName, translationEdition, onPlay, isCurrent }) {
+function AyahCard({ ayah, onPlay, showTranslation = false }) {
+  const [bookmarked, setBookmarked] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [marked, setMarked] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
-  async function copyAyah() {
-    const translation = ayah.translation?.text ? `\n\n${ayah.translation.text}` : '';
-    await navigator.clipboard.writeText(`${ayah.text}${translation}`);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1400);
-  }
+  const translationVisible = showTranslation || expanded;
+
+  const handleCopy = async () => {
+    try {
+      const translationText = ayah.translation?.text
+        ? `\n\n${ayah.translation.text}`
+        : "";
+
+      await navigator.clipboard.writeText(`${ayah.text}${translationText}`);
+
+      setCopied(true);
+
+      setTimeout(() => {
+        setCopied(false);
+      }, 1500);
+    } catch (error) {
+      console.error("Failed to copy ayah:", error);
+    }
+  };
+
+  const handleBookmark = () => {
+    setBookmarked((current) => !current);
+  };
 
   return (
     <article
       className={`rounded-lg border bg-white p-5 shadow-sm transition dark:bg-white/5 ${
-        isCurrent
+        expanded
           ? 'border-emerald-600 ring-2 ring-emerald-600/10 dark:border-emerald-300'
           : 'border-slate-200 dark:border-white/10'
       }`}
     >
-      <div className="mb-5 flex items-center justify-between gap-4">
-        <span className="rounded-md bg-stone-100 px-3 py-1 text-sm font-medium text-slate-600 dark:bg-white/10 dark:text-slate-300">
-          {surahName} · Ayah {ayah.numberInSurah}
+      <div className="mb-5 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => onPlay?.(ayah)}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          title="تشغيل الآية"
+          aria-label="تشغيل الآية"
+        >
+          <Play size={16} fill="currentColor" />
+        </button>
+
+        <span className="flex h-9 min-w-9 items-center justify-center rounded-full bg-zinc-100 px-2 text-sm font-semibold text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+          {ayah.numberInSurah}
         </span>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={copyAyah}
-            className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-emerald-700 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-emerald-300"
-            aria-label="Copy ayah"
-          >
-            {copied ? <Check className="h-5 w-5" /> : <Copy className="h-5 w-5" />}
-          </button>
-          <button
-            type="button"
-            onClick={onPlay}
-            disabled={!ayah.audio?.url}
-            className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-emerald-300"
-            aria-label="Play ayah audio"
-          >
-            <Play className="h-5 w-5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setMarked((value) => !value)}
-            className={`rounded-full p-2 transition hover:bg-slate-100 dark:hover:bg-white/10 ${
-              marked ? 'text-amber-600 dark:text-amber-300' : 'text-slate-500 dark:text-slate-400'
-            }`}
-            aria-label="Bookmark placeholder"
-            title="Bookmark persistence will be added in a later phase"
-          >
-            <Bookmark className="h-5 w-5" fill={marked ? 'currentColor' : 'none'} />
-          </button>
-        </div>
       </div>
 
-      <p
-        className="quran-arabic text-right text-3xl leading-[2.35] text-slate-950 dark:text-white sm:text-4xl"
-        dir="rtl"
+      <button
+        type="button"
+        onClick={() => setExpanded((current) => !current)}
+        className="block w-full text-right"
+        aria-expanded={translationVisible}
       >
-        {ayah.text}
-      </p>
-
-      {ayah.translation?.text && (
-        <div className="mt-6 border-t border-slate-100 pt-5 dark:border-white/10">
-          <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
-            {translationEdition?.englishName ?? 'Translation'}
+        <p
+          dir="rtl"
+          lang="ar"
+          className="font-quran text-3xl leading-[2.2] text-zinc-900 dark:text-zinc-100"
+        >
+          {ayah.text}
+          <p
+            dir="rtl"
+            lang="ar"
+            className="font-quran text-3xl leading-[2.2] text-zinc-900 dark:text-zinc-100"
+          >
           </p>
-          <p className="mt-2 leading-7 text-slate-700 dark:text-slate-300">
+        </p>
+
+        {!translationVisible && ayah.translation?.text && (
+          <p className="mt-3 text-xs text-zinc-400 dark:text-zinc-500">
+            اضغط على الآية لعرض الترجمة
+          </p>
+        )}
+      </button>
+
+      {translationVisible && ayah.translation?.text && (
+        <div className="mt-5 border-t border-zinc-100 pt-4 dark:border-zinc-800">
+          <p
+            dir="ltr"
+            className="text-base leading-8 text-zinc-600 dark:text-zinc-300"
+          >
             {ayah.translation.text}
           </p>
         </div>
       )}
+
+      <div className="mt-5 flex items-center justify-end gap-2 border-t border-zinc-100 pt-4 dark:border-zinc-800">
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+        >
+          {copied ? <Check size={16} /> : <Copy size={16} />}
+          {copied ? "تم النسخ" : "نسخ"}
+        </button>
+
+        <button
+          type="button"
+          onClick={handleBookmark}
+          className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm transition ${
+            bookmarked
+              ? "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100"
+              : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+          }`}
+        >
+          <Bookmark size={16} fill={bookmarked ? "currentColor" : "none"} />
+          {bookmarked ? "محفوظة" : "حفظ"}
+        </button>
+      </div>
     </article>
   );
 }
