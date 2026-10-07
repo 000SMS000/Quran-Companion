@@ -22,11 +22,14 @@ class QuranApiService
         return rtrim((string) config('quran.base_url'), '/');
     }
 
-    protected function client(): PendingRequest
+   protected function client(): PendingRequest
     {
         return $this->http
             ->baseUrl($this->baseUrl())
             ->acceptJson()
+            ->withHeaders([
+                'Accept-Encoding' => 'gzip',
+            ])
             ->withOptions([
                 'force_ip_resolve' => 'v4',
             ])
@@ -48,15 +51,17 @@ class QuranApiService
         int $number,
         ?string $translationEdition = null,
         ?string $audioEdition = null,
+        ?string $secondTranslationEdition = null,
     ): array {
         $translationEdition ??= (string) config('quran.default_translation');
         $audioEdition ??= (string) config('quran.default_audio');
 
         $cacheKey = sprintf(
-            'quran.surah.%d.%s.%s',
+            'quran.surah.%d.%s.%s.%s',
             $number,
-            $translationEdition,
-            $audioEdition,
+            $translationEdition ?: 'none',
+            $audioEdition ?: 'none',
+            $secondTranslationEdition ?: 'none',
         );
 
         return Cache::remember(
@@ -65,21 +70,33 @@ class QuranApiService
             function () use (
                 $number,
                 $translationEdition,
-                $audioEdition
+                $audioEdition,
+                $secondTranslationEdition
             ) {
                 // Arabic Quran text.
                 $arabic = $this->get('/surah/'.$number);
 
-                // Translation.
-                $translation = $this->get(
-                    '/surah/'.$number.'/'.$translationEdition
-                );
+                // First translation.
+                $translation = $translationEdition
+                    ? $this->get(
+                        '/surah/'.$number.'/'.$translationEdition
+                    )
+                    : null;
+
+                // Optional second translation.
+                $secondTranslation = $secondTranslationEdition
+                    ? $this->get(
+                        '/surah/'.$number.'/'.$secondTranslationEdition
+                    )
+                    : null;
 
                 return $this->normalizeSurahData(
                     $arabic,
                     $translation,
                     $translationEdition,
-                    $audioEdition
+                    $audioEdition,
+                    $secondTranslation,
+                    $secondTranslationEdition,
                 );
             }
         );
@@ -87,9 +104,11 @@ class QuranApiService
 
     protected function normalizeSurahData(
         array $arabic,
-        array $translation,
-        string $translationEdition,
+        ?array $translation,
+        ?string $translationEdition,
         string $audioEdition,
+        ?array $secondTranslation = null,
+        ?string $secondTranslationEdition = null,
     ): array {
         return [
             ...$this->normalizeSurahSummary($arabic),
@@ -98,13 +117,23 @@ class QuranApiService
                 $arabic['edition'] ?? []
             ),
 
-            'translationEdition' => [
-                'identifier' => $translationEdition,
-                'language' => 'en',
-                'format' => 'text',
-                'type' => 'translation',
-                'direction' => 'ltr',
-            ],
+            'translationEdition' => $translationEdition
+                ? [
+                    'identifier' => $translationEdition,
+                    'language' => 'en',
+                    'format' => 'text',
+                    'type' => 'translation',
+                    'direction' => 'ltr',
+                ]
+                : null,
+
+            'secondTranslationEdition' => $secondTranslationEdition
+                ? [
+                    'identifier' => $secondTranslationEdition,
+                    'format' => 'text',
+                    'type' => 'translation',
+                ]
+                : null,
 
             'audioEdition' => [
                 'identifier' => $audioEdition,
@@ -114,9 +143,14 @@ class QuranApiService
             'ayahs' => collect($arabic['ayahs'] ?? [])
                 ->map(function (array $ayah, int $index) use (
                     $translation,
+                    $secondTranslation,
                     $audioEdition
                 ) {
-                    $translationAyah = $translation['ayahs'][$index] ?? null;
+                    $translationAyah =
+                        $translation['ayahs'][$index] ?? null;
+
+                    $secondTranslationAyah =
+                        $secondTranslation['ayahs'][$index] ?? null;
 
                     return [
                         'number' => $ayah['number'] ?? null,
@@ -126,9 +160,17 @@ class QuranApiService
                         'page' => $ayah['page'] ?? null,
                         'sajda' => $ayah['sajda'] ?? false,
 
-                        'translation' => $translationAyah ? [
-                            'text' => $translationAyah['text'] ?? null,
-                        ] : null,
+                        'translation' => $translationAyah
+                            ? [
+                                'text' => $translationAyah['text'] ?? null,
+                            ]
+                            : null,
+
+                        'secondTranslation' => $secondTranslationAyah
+                            ? [
+                                'text' => $secondTranslationAyah['text'] ?? null,
+                            ]
+                            : null,
 
                         'audio' => [
                             'url' => sprintf(
