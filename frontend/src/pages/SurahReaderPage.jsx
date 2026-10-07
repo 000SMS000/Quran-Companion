@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Languages, Volume2, Play } from "lucide-react";
+import { ArrowLeft, Languages, Play } from "lucide-react";
 import { getEditions, getSurah } from "../api/quranApi";
 import ErrorState from "../components/ErrorState";
 import LoadingState from "../components/LoadingState";
@@ -10,6 +10,7 @@ function SurahReaderPage() {
   const { number } = useParams();
   const [searchParams] = useSearchParams();
   const ayahFromUrl = Number(searchParams.get("ayah")) || null;
+
   const { currentTrack, playQueue } = useAudioPlayer();
 
   const [surah, setSurah] = useState(null);
@@ -19,6 +20,8 @@ function SurahReaderPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedAyah, setSelectedAyah] = useState(null);
+
+  // Select the ayah from the URL.
   useEffect(() => {
     if (!surah) {
       return;
@@ -38,6 +41,27 @@ function SurahReaderPage() {
     }
   }, [surah, ayahFromUrl]);
 
+  // Scroll automatically to the selected ayah.
+  useEffect(() => {
+    if (!selectedAyah) {
+      return;
+    }
+
+    const element = document.getElementById(`ayah-${selectedAyah}`);
+
+    if (!element) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      element.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
+  }, [selectedAyah]);
+
+  // Load available English translations.
   useEffect(() => {
     getEditions({ language: "en" })
       .then((items) =>
@@ -46,6 +70,7 @@ function SurahReaderPage() {
       .catch(() => setEditions([]));
   }, []);
 
+  // Load the selected Surah.
   useEffect(() => {
     setLoading(true);
     setError("");
@@ -58,6 +83,7 @@ function SurahReaderPage() {
       .finally(() => setLoading(false));
   }, [number, translation]);
 
+  // Build audio tracks for all ayahs.
   const tracks = useMemo(() => {
     if (!surah) {
       return [];
@@ -71,9 +97,11 @@ function SurahReaderPage() {
     }));
   }, [surah]);
 
-  const handleAyahClick = (ayahNumber) => {
-    setSelectedAyah((current) => (current === ayahNumber ? null : ayahNumber));
-  };
+  function handleAyahClick(ayahNumber) {
+    setSelectedAyah((current) =>
+      current === ayahNumber ? null : ayahNumber,
+    );
+  }
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
@@ -135,13 +163,20 @@ function SurahReaderPage() {
 
                 <select
                   value={translation}
-                  onChange={(event) => setTranslation(event.target.value)}
+                  onChange={(event) =>
+                    setTranslation(event.target.value)
+                  }
                   className="w-full rounded-md border border-slate-200 bg-white px-3 py-3 text-slate-900 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/10 dark:border-white/10 dark:bg-slate-900 dark:text-white"
                 >
-                  <option value="en.sahih">Saheeh International</option>
+                  <option value="en.sahih">
+                    Saheeh International
+                  </option>
 
                   {editions
-                    .filter((edition) => edition.identifier !== "en.sahih")
+                    .filter(
+                      (edition) =>
+                        edition.identifier !== "en.sahih",
+                    )
                     .slice(0, 20)
                     .map((edition) => (
                       <option
@@ -165,7 +200,9 @@ function SurahReaderPage() {
                   min="28"
                   max="52"
                   value={fontSize}
-                  onChange={(event) => setFontSize(Number(event.target.value))}
+                  onChange={(event) =>
+                    setFontSize(Number(event.target.value))
+                  }
                   className="w-full accent-emerald-700"
                 />
               </label>
@@ -190,14 +227,22 @@ function SurahReaderPage() {
               style={{ fontSize: `${fontSize}px` }}
             >
               {surah.ayahs.map((ayah, index) => {
-                const isSelected = selectedAyah === ayah.numberInSurah;
+                const isSelected =
+                  selectedAyah === ayah.numberInSurah;
 
                 const isCurrent =
-                  currentTrack?.id === `${surah.number}:${ayah.numberInSurah}`;
+                  currentTrack?.id ===
+                  `${surah.number}:${ayah.numberInSurah}`;
 
                 let text = ayah.text;
 
-                if (index === 0 && surah.number !== 1 && surah.number !== 9) {
+                // Remove Bismillah from the first ayah because
+                // it is displayed separately above the reader.
+                if (
+                  index === 0 &&
+                  surah.number !== 1 &&
+                  surah.number !== 9
+                ) {
                   text = text.replace(
                     /^بِسۡمِ ٱللَّهِ ٱلرَّحۡمَـٰنِ ٱلرَّحِیمِ\s*/,
                     "",
@@ -206,8 +251,12 @@ function SurahReaderPage() {
 
                 return (
                   <span key={ayah.number}>
+                    {/* Ayah */}
                     <span
-                      onClick={() => handleAyahClick(ayah.numberInSurah)}
+                      id={`ayah-${ayah.numberInSurah}`}
+                      onClick={() =>
+                        handleAyahClick(ayah.numberInSurah)
+                      }
                       className={`cursor-pointer rounded-md transition ${
                         isSelected
                           ? "bg-emerald-100 text-emerald-950 dark:bg-emerald-900/40 dark:text-emerald-100"
@@ -217,6 +266,7 @@ function SurahReaderPage() {
                       {text}
                     </span>
 
+                    {/* Ayah number */}
                     <span
                       className={`mx-1 inline-flex h-7 min-w-7 items-center justify-center rounded-full border align-middle font-sans text-xs font-semibold ${
                         isCurrent
@@ -227,6 +277,7 @@ function SurahReaderPage() {
                       {ayah.numberInSurah}
                     </span>
 
+                    {/* Translation */}
                     {isSelected && ayah.translation?.text && (
                       <span
                         dir="ltr"
@@ -242,10 +293,15 @@ function SurahReaderPage() {
                           title={`Play Ayah ${ayah.numberInSurah}`}
                           aria-label={`Play Ayah ${ayah.numberInSurah}`}
                         >
-                          <Play size={16} fill="currentColor" />
+                          <Play
+                            size={16}
+                            fill="currentColor"
+                          />
                         </button>
 
-                        <span className="flex-1">{ayah.translation.text}</span>
+                        <span className="flex-1">
+                          {ayah.translation.text}
+                        </span>
                       </span>
                     )}
                   </span>
