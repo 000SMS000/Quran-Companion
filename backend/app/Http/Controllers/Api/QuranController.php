@@ -57,7 +57,7 @@ class QuranController extends Controller
     {
         $validator = Validator::make($request->query(), [
             'q' => ['required', 'string', 'min:2', 'max:120'],
-            'edition' => ['sometimes', 'string', 'max:80'],
+            'language' => ['sometimes', 'in:en,ar'],
         ]);
 
         if ($validator->fails()) {
@@ -70,9 +70,15 @@ class QuranController extends Controller
 
         $validated = $validator->validated();
 
+        $language = $validated['language'] ?? 'en';
+
+        $edition = $language === 'ar'
+            ? 'quran-uthmani'
+            : (string) config('quran.default_translation');
+
         return $this->respond(fn () => $this->quran->search(
             trim($validated['q']),
-            $validated['edition'] ?? null,
+            $edition,
         ));
     }
 
