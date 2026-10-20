@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Languages, Play } from "lucide-react";
+import { ArrowLeft, Languages, Play, Bookmark } from "lucide-react";
 import { getEditions, getSurah } from "../api/quranApi";
+import { getBookmarks, saveBookmark, deleteBookmark } from "../api/bookmarkApi";
 import ErrorState from "../components/ErrorState";
 import LoadingState from "../components/LoadingState";
 import { useAudioPlayer } from "../contexts/AudioPlayerContext";
@@ -20,6 +21,32 @@ function SurahReaderPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedAyah, setSelectedAyah] = useState(null);
+
+  const [bookmarks, setBookmarks] = useState([]);
+  const [bookmarkActionKey, setBookmarkActionKey] = useState(null);
+  const [bookmarkError, setBookmarkError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getBookmarks()
+      .then((items) => {
+        if (!cancelled) {
+          setBookmarks(items);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setBookmarkError(
+            "Could not load bookmarks. You can still read the Quran.",
+          );
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Select the ayah from the URL.
   useEffect(() => {
@@ -98,9 +125,7 @@ function SurahReaderPage() {
   }, [surah]);
 
   function handleAyahClick(ayahNumber) {
-    setSelectedAyah((current) =>
-      current === ayahNumber ? null : ayahNumber,
-    );
+    setSelectedAyah((current) => (current === ayahNumber ? null : ayahNumber));
   }
 
   return (
@@ -163,20 +188,13 @@ function SurahReaderPage() {
 
                 <select
                   value={translation}
-                  onChange={(event) =>
-                    setTranslation(event.target.value)
-                  }
+                  onChange={(event) => setTranslation(event.target.value)}
                   className="w-full rounded-md border border-slate-200 bg-white px-3 py-3 text-slate-900 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/10 dark:border-white/10 dark:bg-slate-900 dark:text-white"
                 >
-                  <option value="en.sahih">
-                    Saheeh International
-                  </option>
+                  <option value="en.sahih">Saheeh International</option>
 
                   {editions
-                    .filter(
-                      (edition) =>
-                        edition.identifier !== "en.sahih",
-                    )
+                    .filter((edition) => edition.identifier !== "en.sahih")
                     .slice(0, 20)
                     .map((edition) => (
                       <option
@@ -200,14 +218,21 @@ function SurahReaderPage() {
                   min="28"
                   max="52"
                   value={fontSize}
-                  onChange={(event) =>
-                    setFontSize(Number(event.target.value))
-                  }
+                  onChange={(event) => setFontSize(Number(event.target.value))}
                   className="w-full accent-emerald-700"
                 />
               </label>
             </div>
           </section>
+
+          {bookmarkError && (
+            <p
+              role="status"
+              className="mt-4 rounded-lg border border-amber-500/30 bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-900/20 dark:text-amber-200"
+            >
+              {bookmarkError}
+            </p>
+          )}
 
           {/* Quran Reader */}
           <section className="mt-6 rounded-lg border border-emerald-900/10 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/5 sm:p-10">
@@ -227,22 +252,16 @@ function SurahReaderPage() {
               style={{ fontSize: `${fontSize}px` }}
             >
               {surah.ayahs.map((ayah, index) => {
-                const isSelected =
-                  selectedAyah === ayah.numberInSurah;
+                const isSelected = selectedAyah === ayah.numberInSurah;
 
                 const isCurrent =
-                  currentTrack?.id ===
-                  `${surah.number}:${ayah.numberInSurah}`;
+                  currentTrack?.id === `${surah.number}:${ayah.numberInSurah}`;
 
                 let text = ayah.text;
 
                 // Remove Bismillah from the first ayah because
                 // it is displayed separately above the reader.
-                if (
-                  index === 0 &&
-                  surah.number !== 1 &&
-                  surah.number !== 9
-                ) {
+                if (index === 0 && surah.number !== 1 && surah.number !== 9) {
                   text = text.replace(
                     /^بِسۡمِ ٱللَّهِ ٱلرَّحۡمَـٰنِ ٱلرَّحِیمِ\s*/,
                     "",
@@ -254,9 +273,7 @@ function SurahReaderPage() {
                     {/* Ayah */}
                     <span
                       id={`ayah-${ayah.numberInSurah}`}
-                      onClick={() =>
-                        handleAyahClick(ayah.numberInSurah)
-                      }
+                      onClick={() => handleAyahClick(ayah.numberInSurah)}
                       className={`cursor-pointer rounded-md transition ${
                         isSelected
                           ? "bg-emerald-100 text-emerald-950 dark:bg-emerald-900/40 dark:text-emerald-100"
@@ -277,31 +294,76 @@ function SurahReaderPage() {
                       {ayah.numberInSurah}
                     </span>
 
-                    {/* Translation */}
+                    {/* Translation && save */}
+
                     {isSelected && ayah.translation?.text && (
                       <span
                         dir="ltr"
                         className="my-5 flex items-start gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-left font-sans text-base leading-8 text-slate-600 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-300"
                       >
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            playQueue(tracks, index);
-                          }}
-                          className="mt-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-700 text-white transition hover:bg-emerald-800"
-                          title={`Play Ayah ${ayah.numberInSurah}`}
-                          aria-label={`Play Ayah ${ayah.numberInSurah}`}
-                        >
-                          <Play
-                            size={16}
-                            fill="currentColor"
-                          />
-                        </button>
+                        <span className="flex shrink-0 flex-col gap-2">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              playQueue(tracks, index);
+                            }}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-emerald-700 text-white transition hover:bg-emerald-800"
+                            title={`Play Ayah ${ayah.numberInSurah}`}
+                            aria-label={`Play Ayah ${ayah.numberInSurah}`}
+                          >
+                            <Play size={16} fill="currentColor" />
+                          </button>
 
-                        <span className="flex-1">
-                          {ayah.translation.text}
+                          {(() => {
+                            const bookmark = bookmarks.find(
+                              (item) =>
+                                item.surah_number === surah.number &&
+                                item.ayah_number === ayah.numberInSurah,
+                            );
+
+                            const isBookmarked = Boolean(bookmark);
+                            const isSaving =
+                              bookmarkActionKey ===
+                              `${surah.number}:${ayah.numberInSurah}`;
+
+                            return (
+                              <button
+                                type="button"
+                                disabled={bookmarkActionKey !== null}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleBookmarkToggle(ayah.numberInSurah);
+                                }}
+                                className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition disabled:cursor-wait disabled:opacity-50 ${
+                                  isBookmarked
+                                    ? "border-amber-500 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                                    : "border-slate-300 bg-white text-slate-600 hover:border-amber-500 hover:text-amber-700 dark:border-white/20 dark:bg-slate-800 dark:text-slate-300"
+                                }`}
+                                title={
+                                  isSaving
+                                    ? "Updating bookmark..."
+                                    : isBookmarked
+                                      ? "Remove bookmark"
+                                      : "Save bookmark"
+                                }
+                                aria-label={
+                                  isBookmarked
+                                    ? `Remove bookmark for Ayah ${ayah.numberInSurah}`
+                                    : `Save Ayah ${ayah.numberInSurah}`
+                                }
+                                aria-pressed={isBookmarked}
+                              >
+                                <Bookmark
+                                  size={17}
+                                  fill={isBookmarked ? "currentColor" : "none"}
+                                />
+                              </button>
+                            );
+                          })()}
                         </span>
+
+                        <span className="flex-1">{ayah.translation.text}</span>
                       </span>
                     )}
                   </span>
@@ -313,6 +375,50 @@ function SurahReaderPage() {
       )}
     </main>
   );
+
+  async function handleBookmarkToggle(ayahNumber) {
+    const actionKey = `${surah.number}:${ayahNumber}`;
+
+    if (bookmarkActionKey !== null) {
+      return;
+    }
+
+    const existingBookmark = bookmarks.find(
+      (bookmark) =>
+        bookmark.surah_number === surah.number &&
+        bookmark.ayah_number === ayahNumber,
+    );
+
+    setBookmarkActionKey(actionKey);
+    setBookmarkError("");
+
+    try {
+      if (existingBookmark) {
+        await deleteBookmark(existingBookmark.id);
+
+        setBookmarks((current) =>
+          current.filter((bookmark) => bookmark.id !== existingBookmark.id),
+        );
+      } else {
+        const savedBookmark = await saveBookmark(surah.number, ayahNumber);
+
+        setBookmarks((current) => {
+          const alreadyExists = current.some(
+            (bookmark) => bookmark.id === savedBookmark.id,
+          );
+
+          return alreadyExists ? current : [savedBookmark, ...current];
+        });
+      }
+    } catch (exception) {
+      setBookmarkError(
+        exception.response?.data?.message ??
+          "Could not update bookmark. Please try again.",
+      );
+    } finally {
+      setBookmarkActionKey(null);
+    }
+  }
 }
 
 export default SurahReaderPage;
