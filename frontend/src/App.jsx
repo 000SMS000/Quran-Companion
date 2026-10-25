@@ -6,6 +6,7 @@ import HomePage from './pages/HomePage';
 import SearchPage from './pages/SearchPage';
 import SurahReaderPage from './pages/SurahReaderPage';
 import SurahsPage from './pages/SurahsPage';
+import BookmarksPage from "./pages/BookmarksPage";
 
 function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') ?? 'light');
@@ -32,6 +33,7 @@ function App() {
             <Route path="/surah/:number" element={<SurahReaderPage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="/bookmarks" element={<BookmarksPage />} />
           </Route>
         </Routes>
       </AudioPlayerProvider>

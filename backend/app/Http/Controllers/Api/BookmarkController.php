@@ -31,12 +31,28 @@ class BookmarkController extends Controller
 
         $validated = $request->validate([
             'surah_number' => ['required', 'integer', 'between:1,114'],
-            'ayah_number' => ['required', 'integer', 'between:1,286'],
+            'ayah_number' => ['required', 'integer', 'min:1'],
         ]);
 
+        $surahNumber = (int) $validated['surah_number'];
+        $ayahNumber = (int) $validated['ayah_number'];
+
+        $ayahCount = config("quran.surah_ayah_counts.{$surahNumber}");
+
+        if ($ayahCount === null || $ayahNumber > $ayahCount) {
+            return response()->json([
+                'message' => 'The selected ayah does not exist in this surah.',
+                'errors' => [
+                    'ayah_number' => [
+                        'The selected ayah does not exist in this surah.',
+                    ],
+                ],
+            ], 422);
+        }
+
         $bookmark = $owner->bookmarks()->firstOrCreate([
-            'surah_number' => $validated['surah_number'],
-            'ayah_number' => $validated['ayah_number'],
+            'surah_number' => $surahNumber,
+            'ayah_number' => $ayahNumber,
         ]);
 
         return response()->json([
@@ -52,7 +68,7 @@ class BookmarkController extends Controller
         /** @var BookmarkOwner $owner */
         $owner = $request->attributes->get('bookmarkOwner');
 
-        // Only allow deletion of a bookmark belonging to this owner.
+        // Make sure this bookmark belongs to the current guest.
         $ownedBookmark = $owner->bookmarks()
             ->whereKey($bookmark->id)
             ->firstOrFail();
