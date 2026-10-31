@@ -1,22 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
-import {
-  Pause,
-  Play,
-  SkipBack,
-  SkipForward,
-  Volume2,
-} from 'lucide-react';
-import { useAudioPlayer } from '../contexts/AudioPlayerContext';
+import { useEffect, useRef, useState } from "react";
+import { Pause, Play, SkipBack, SkipForward, Volume2 } from "lucide-react";
+import { useAudioPlayer } from "../contexts/AudioPlayerContext";
 
 function formatTime(value) {
   if (!Number.isFinite(value)) {
-    return '0:00';
+    return "0:00";
   }
 
   const minutes = Math.floor(value / 60);
   const seconds = Math.floor(value % 60)
     .toString()
-    .padStart(2, '0');
+    .padStart(2, "0");
 
   return `${minutes}:${seconds}`;
 }
@@ -24,13 +18,8 @@ function formatTime(value) {
 function AudioPlayer() {
   const audioRef = useRef(null);
 
-  const {
-    currentTrack,
-    canPlayNext,
-    canPlayPrevious,
-    playNext,
-    playPrevious,
-  } = useAudioPlayer();
+  const { currentTrack, canPlayNext, canPlayPrevious, playNext, playPrevious } =
+    useAudioPlayer();
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -62,7 +51,6 @@ function AudioPlayer() {
 
     audio.pause();
     audio.src = currentTrack.audioUrl;
-    audio.volume = volume;
     audio.load();
 
     const startPlayback = async () => {
@@ -78,7 +66,7 @@ function AudioPlayer() {
         }
       } catch (error) {
         if (!cancelled) {
-          console.warn('Audio playback could not start:', error);
+          console.warn("Audio playback could not start:", error);
           setIsPlaying(false);
         }
       }
@@ -88,16 +76,25 @@ function AudioPlayer() {
       startPlayback();
     };
 
-    audio.addEventListener('canplay', handleCanPlay, {
+    audio.addEventListener("canplay", handleCanPlay, {
       once: true,
     });
 
     return () => {
       cancelled = true;
-      audio.removeEventListener('canplay', handleCanPlay);
+      audio.removeEventListener("canplay", handleCanPlay);
       audio.pause();
     };
-  }, [currentTrack, volume]);
+  }, [currentTrack]);
+
+  // Update volume independently without reloading the track.
+  useEffect(() => {
+    const audio = audioRef.current;
+
+    if (audio) {
+      audio.volume = volume;
+    }
+  }, [volume]);
 
   function togglePlayback() {
     const audio = audioRef.current;
@@ -111,7 +108,7 @@ function AudioPlayer() {
         .play()
         .then(() => setIsPlaying(true))
         .catch((error) => {
-          console.warn('Audio playback failed:', error);
+          console.warn("Audio playback failed:", error);
           setIsPlaying(false);
         });
     } else {
@@ -135,12 +132,8 @@ function AudioPlayer() {
       <audio
         ref={audioRef}
         preload="auto"
-        onTimeUpdate={(event) =>
-          setProgress(event.currentTarget.currentTime)
-        }
-        onLoadedMetadata={(event) =>
-          setDuration(event.currentTarget.duration)
-        }
+        onTimeUpdate={(event) => setProgress(event.currentTarget.currentTime)}
+        onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
         onEnded={() => {
@@ -151,10 +144,7 @@ function AudioPlayer() {
           }
         }}
         onError={(event) => {
-          console.warn(
-            'Audio element error:',
-            event.currentTarget.error
-          );
+          console.warn("Audio element error:", event.currentTarget.error);
           setIsPlaying(false);
         }}
       />
@@ -162,14 +152,12 @@ function AudioPlayer() {
       <div className="mx-auto flex max-w-7xl flex-col gap-3 md:flex-row md:items-center">
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-slate-900 dark:text-white">
-            {currentTrack
-              ? currentTrack.title
-              : 'Select an ayah to play'}
+            {currentTrack ? currentTrack.title : "Select an ayah to play"}
           </p>
 
           <p className="truncate text-xs text-slate-500 dark:text-slate-400">
             {currentTrack?.subtitle ??
-              'Verse-by-verse recitation will appear here.'}
+              "Verse-by-verse recitation will appear here."}
           </p>
         </div>
 
@@ -189,9 +177,7 @@ function AudioPlayer() {
             onClick={togglePlayback}
             disabled={!currentTrack}
             className="rounded-full bg-emerald-700 p-3 text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300 dark:disabled:bg-slate-700"
-            aria-label={
-              isPlaying ? 'Pause audio' : 'Play audio'
-            }
+            aria-label={isPlaying ? "Pause audio" : "Play audio"}
           >
             {isPlaying ? (
               <Pause className="h-5 w-5" />
@@ -238,9 +224,7 @@ function AudioPlayer() {
             max="1"
             step="0.05"
             value={volume}
-            onChange={(event) =>
-              setVolume(Number(event.target.value))
-            }
+            onChange={(event) => setVolume(Number(event.target.value))}
             className="w-24 accent-emerald-700"
             aria-label="Audio volume"
           />
