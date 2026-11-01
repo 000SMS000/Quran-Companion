@@ -6,6 +6,7 @@ import { getBookmarks, saveBookmark, deleteBookmark } from "../api/bookmarkApi";
 import ErrorState from "../components/ErrorState";
 import LoadingState from "../components/LoadingState";
 import { useAudioPlayer } from "../contexts/AudioPlayerContext";
+import { usePreferences } from "../contexts/PreferencesContext";
 
 function SurahReaderPage() {
   const { number } = useParams();
@@ -13,6 +14,7 @@ function SurahReaderPage() {
   const ayahFromUrl = Number(searchParams.get("ayah")) || null;
 
   const { currentTrack, playQueue } = useAudioPlayer();
+  const { audioEdition } = usePreferences();
 
   const [surah, setSurah] = useState(null);
   const [editions, setEditions] = useState([]);
@@ -99,16 +101,32 @@ function SurahReaderPage() {
 
   // Load the selected Surah.
   useEffect(() => {
+    let cancelled = false;
+
     setLoading(true);
     setError("");
 
-    getSurah(number, { translation })
-      .then(setSurah)
-      .catch((exception) =>
-        setError(exception.response?.data?.message ?? exception.message),
-      )
-      .finally(() => setLoading(false));
-  }, [number, translation]);
+    getSurah(number, { translation, audio: audioEdition })
+      .then((data) => {
+        if (!cancelled) {
+          setSurah(data);
+        }
+      })
+      .catch((exception) => {
+        if (!cancelled) {
+          setError(exception.response?.data?.message ?? exception.message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [number, translation, audioEdition]);
 
   // Build audio tracks for all ayahs.
   const tracks = useMemo(() => {
