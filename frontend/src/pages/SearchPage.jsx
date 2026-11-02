@@ -104,7 +104,7 @@ function SearchPage() {
       >
         <label className="relative flex-1">
           <span className="sr-only">{t("search.title")}</span>
-          <Search className="pointer-events-none absolute start-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+          <Search className="pointer-events-none absolute inset-s-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
