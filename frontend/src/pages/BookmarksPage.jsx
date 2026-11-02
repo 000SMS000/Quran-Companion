@@ -5,8 +5,12 @@ import { getBookmarks, deleteBookmark } from "../api/bookmarkApi";
 import { getSurah } from "../api/quranApi";
 import ErrorState from "../components/ErrorState";
 import LoadingState from "../components/LoadingState";
+import { usePreferences } from "../contexts/PreferencesContext";
+import { useTranslation } from "../hooks/useTranslation";
 
 function BookmarksPage() {
+  const { language } = usePreferences();
+  const { t } = useTranslation();
   const [bookmarks, setBookmarks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -81,10 +85,8 @@ function BookmarksPage() {
         setBookmarks(enrichedBookmarks);
       } catch (exception) {
         if (!cancelled) {
-          setError(
-            exception.response?.data?.message ??
-              "Could not load your saved ayahs. Please try again.",
-          );
+          console.error("Could not load bookmarks:", exception);
+          setError("bookmarks.loadError");
         }
       } finally {
         if (!cancelled) {
@@ -111,10 +113,8 @@ function BookmarksPage() {
         current.filter((bookmark) => bookmark.id !== bookmarkId),
       );
     } catch (exception) {
-      setError(
-        exception.response?.data?.message ??
-          "Could not remove this bookmark. Please try again.",
-      );
+      console.error("Could not remove bookmark:", exception);
+      setError("bookmarks.deleteError");
     } finally {
       setDeletingId(null);
     }
@@ -126,8 +126,8 @@ function BookmarksPage() {
         to="/surahs"
         className="inline-flex items-center gap-2 text-sm font-medium text-emerald-700 hover:text-emerald-900 dark:text-emerald-300 dark:hover:text-emerald-100"
       >
-        <ArrowLeft className="h-4 w-4" />
-        Back to Surahs
+        <ArrowLeft className="h-4 w-4 rtl:rotate-180" />
+        {t("common.backToSurahs")}
       </Link>
 
       <header className="mt-8">
@@ -138,10 +138,10 @@ function BookmarksPage() {
 
           <div>
             <h1 className="text-3xl font-semibold text-slate-950 dark:text-white">
-              Saved Ayahs
+              {t("bookmarks.title")}
             </h1>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-              Your personal collection of saved verses.
+              {t("bookmarks.description")}
             </p>
           </div>
         </div>
@@ -149,13 +149,13 @@ function BookmarksPage() {
 
       {error && (
         <div className="mt-6">
-          <ErrorState message={error} />
+          <ErrorState message={t(error)} />
         </div>
       )}
 
       {loading && (
         <div className="mt-8">
-          <LoadingState label="Loading saved ayahs..." />
+          <LoadingState label={t("bookmarks.loading")} />
         </div>
       )}
 
@@ -164,18 +164,18 @@ function BookmarksPage() {
           <Bookmark className="mx-auto h-10 w-10 text-slate-400" />
 
           <h2 className="mt-4 text-lg font-semibold text-slate-900 dark:text-white">
-            No saved ayahs yet
+            {t("bookmarks.emptyTitle")}
           </h2>
 
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-            Open a Surah and select an ayah to save it here.
+            {t("bookmarks.emptyDescription")}
           </p>
 
           <Link
             to="/surahs"
             className="mt-5 inline-flex items-center justify-center rounded-md bg-emerald-700 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-800"
           >
-            Browse Surahs
+            {t("bookmarks.browseSurahs")}
           </Link>
         </section>
       )}
@@ -183,10 +183,21 @@ function BookmarksPage() {
       {!loading && bookmarks.length > 0 && (
         <section className="mt-8 space-y-4">
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            {bookmarks.length} saved {bookmarks.length === 1 ? "ayah" : "ayahs"}
+            {bookmarks.length === 1
+              ? t("bookmarks.countOne")
+              : t("bookmarks.countMany", { count: bookmarks.length })}
           </p>
 
-          {bookmarks.map((bookmark) => (
+          {bookmarks.map((bookmark) => {
+            const surahDisplayName =
+              language === "ar"
+                ? bookmark.surahArabicName ||
+                  t("reader.surahNumber", {
+                    number: bookmark.surah_number,
+                  })
+                : bookmark.surahName;
+
+            return (
             <article
               key={bookmark.id}
               className="rounded-xl border border-emerald-900/10 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-white/5 sm:p-6"
@@ -194,16 +205,16 @@ function BookmarksPage() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="font-semibold text-slate-900 dark:text-white">
-                    {bookmark.surahName}
-                    {bookmark.surahArabicName && (
-                      <span className="ml-2 font-normal text-emerald-700 dark:text-emerald-300">
+                    {surahDisplayName}
+                    {language === "en" && bookmark.surahArabicName && (
+                      <span className="ms-2 font-normal text-emerald-700 dark:text-emerald-300">
                         {bookmark.surahArabicName}
                       </span>
                     )}
                   </h2>
 
                   <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                    Ayah {bookmark.ayah_number}
+                    {t("bookmarks.ayah", { number: bookmark.ayah_number })}
                   </p>
                 </div>
 
@@ -211,8 +222,14 @@ function BookmarksPage() {
                   <Link
                     to={`/surah/${bookmark.surah_number}?ayah=${bookmark.ayah_number}`}
                     className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-emerald-700/20 text-emerald-700 transition hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-white/10"
-                    title="Open this ayah"
-                    aria-label={`Open ${bookmark.surahName}, ayah ${bookmark.ayah_number}`}
+                    title={t("bookmarks.openAyah", {
+                      surah: surahDisplayName,
+                      number: bookmark.ayah_number,
+                    })}
+                    aria-label={t("bookmarks.openAyah", {
+                      surah: surahDisplayName,
+                      number: bookmark.ayah_number,
+                    })}
                   >
                     <ExternalLink size={17} />
                   </Link>
@@ -222,8 +239,14 @@ function BookmarksPage() {
                     disabled={deletingId !== null}
                     onClick={() => handleDelete(bookmark.id)}
                     className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-500/20 text-red-600 transition hover:bg-red-50 disabled:cursor-wait disabled:opacity-50 dark:text-red-300 dark:hover:bg-red-900/20"
-                    title="Remove bookmark"
-                    aria-label={`Remove bookmark for ${bookmark.surahName}, ayah ${bookmark.ayah_number}`}
+                    title={t("bookmarks.removeAyah", {
+                      surah: surahDisplayName,
+                      number: bookmark.ayah_number,
+                    })}
+                    aria-label={t("bookmarks.removeAyah", {
+                      surah: surahDisplayName,
+                      number: bookmark.ayah_number,
+                    })}
                   >
                     <Trash2 size={17} />
                   </button>
@@ -233,26 +256,27 @@ function BookmarksPage() {
               {bookmark.ayahText ? (
                 <p
                   dir="rtl"
-                  className="quran-arabic mt-6 text-right text-3xl leading-[2.3] text-emerald-950 dark:text-emerald-100"
+                  className="quran-arabic mt-6 text-end text-3xl leading-[2.3] text-emerald-950 dark:text-emerald-100"
                 >
                   {bookmark.ayahText}
                 </p>
               ) : (
                 <p className="mt-5 text-sm text-amber-700 dark:text-amber-300">
-                  The Arabic text could not be loaded.
+                  {t("bookmarks.textUnavailable")}
                 </p>
               )}
 
               {bookmark.translationText && (
                 <p
                   dir="ltr"
-                  className="mt-4 border-t border-slate-200 pt-4 text-left text-sm leading-7 text-slate-600 dark:border-white/10 dark:text-slate-300"
+                  className="mt-4 border-t border-slate-200 pt-4 text-start text-sm leading-7 text-slate-600 dark:border-white/10 dark:text-slate-300"
                 >
                   {bookmark.translationText}
                 </p>
               )}
             </article>
-          ))}
+            );
+          })}
         </section>
       )}
     </main>

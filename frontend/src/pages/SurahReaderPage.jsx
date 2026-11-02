@@ -7,6 +7,7 @@ import ErrorState from "../components/ErrorState";
 import LoadingState from "../components/LoadingState";
 import { useAudioPlayer } from "../contexts/AudioPlayerContext";
 import { usePreferences } from "../contexts/PreferencesContext";
+import { useTranslation } from "../hooks/useTranslation";
 
 function SurahReaderPage() {
   const { number } = useParams();
@@ -14,7 +15,8 @@ function SurahReaderPage() {
   const ayahFromUrl = Number(searchParams.get("ayah")) || null;
 
   const { currentTrack, playQueue } = useAudioPlayer();
-  const { audioEdition } = usePreferences();
+  const { audioEdition, language } = usePreferences();
+  const { t } = useTranslation();
 
   const [surah, setSurah] = useState(null);
   const [editions, setEditions] = useState([]);
@@ -37,11 +39,10 @@ function SurahReaderPage() {
           setBookmarks(items);
         }
       })
-      .catch(() => {
+      .catch((exception) => {
         if (!cancelled) {
-          setBookmarkError(
-            "Could not load bookmarks. You can still read the Quran.",
-          );
+          console.error("Could not load bookmarks:", exception);
+          setBookmarkError("reader.bookmarkLoadError");
         }
       });
 
@@ -114,7 +115,8 @@ function SurahReaderPage() {
       })
       .catch((exception) => {
         if (!cancelled) {
-          setError(exception.response?.data?.message ?? exception.message);
+          console.error("Could not load Surah:", exception);
+          setError(true);
         }
       })
       .finally(() => {
@@ -137,7 +139,10 @@ function SurahReaderPage() {
     return surah.ayahs.map((ayah) => ({
       id: `${surah.number}:${ayah.numberInSurah}`,
       title: `${surah.englishName} · Ayah ${ayah.numberInSurah}`,
-      subtitle: surah.audioEdition?.englishName ?? "Quran recitation",
+      subtitle: surah.audioEdition?.englishName,
+      surahEnglishName: surah.englishName,
+      surahArabicName: surah.name,
+      ayahNumber: ayah.numberInSurah,
       audioUrl: ayah.audio?.url,
     }));
   }, [surah]);
@@ -152,19 +157,19 @@ function SurahReaderPage() {
         to="/surahs"
         className="inline-flex items-center gap-2 text-sm font-medium text-emerald-700 hover:text-emerald-900 dark:text-emerald-300 dark:hover:text-emerald-100"
       >
-        <ArrowLeft className="h-4 w-4" />
-        Back to Surahs
+        <ArrowLeft className="h-4 w-4 rtl:rotate-180" />
+        {t("common.backToSurahs")}
       </Link>
 
       {loading && (
         <div className="mt-8">
-          <LoadingState label="Loading Surah..." />
+          <LoadingState label={t("reader.loading")} />
         </div>
       )}
 
       {!loading && error && (
         <div className="mt-8">
-          <ErrorState message={error} />
+          <ErrorState message={t("reader.loadError")} />
         </div>
       )}
 
@@ -175,21 +180,31 @@ function SurahReaderPage() {
             <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
               <div>
                 <p className="text-sm font-medium uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-300">
-                  Surah {surah.number}
+                  {t("reader.surahNumber", { number: surah.number })}
                 </p>
 
                 <h1 className="mt-3 text-4xl font-semibold text-slate-950 dark:text-white">
-                  {surah.englishName}
+                  {language === "ar" ? surah.name : surah.englishName}
                 </h1>
 
                 <p className="mt-2 text-slate-600 dark:text-slate-300">
-                  {surah.englishNameTranslation} · {surah.numberOfAyahs} ayahs ·{" "}
-                  {surah.revelationType}
+                  {language === "en" && (
+                    <>{surah.englishNameTranslation} · </>
+                  )}
+                  {t("reader.ayahCount", { count: surah.numberOfAyahs })}
+                  {language === "en" && (
+                    <>
+                      {" · "}
+                      {surah.revelationType === "Medinan"
+                        ? t("reader.medinan")
+                        : t("reader.meccan")}
+                    </>
+                  )}
                 </p>
               </div>
 
               <p
-                className="quran-arabic text-right text-5xl text-emerald-950 dark:text-emerald-100"
+                className="quran-arabic text-end text-5xl text-emerald-950 dark:text-emerald-100"
                 dir="rtl"
               >
                 {surah.name}
@@ -201,7 +216,7 @@ function SurahReaderPage() {
               <label className="block">
                 <span className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-300">
                   <Languages className="h-4 w-4" />
-                  Translation
+                  {t("reader.translation")}
                 </span>
 
                 <select
@@ -228,7 +243,7 @@ function SurahReaderPage() {
               {/* Font Size */}
               <label className="block">
                 <span className="mb-2 block text-sm font-medium text-slate-600 dark:text-slate-300">
-                  Arabic font size
+                  {t("reader.arabicFontSize")}
                 </span>
 
                 <input
@@ -248,7 +263,7 @@ function SurahReaderPage() {
               role="status"
               className="mt-4 rounded-lg border border-amber-500/30 bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-900/20 dark:text-amber-200"
             >
-              {bookmarkError}
+              {t(bookmarkError)}
             </p>
           )}
 
@@ -266,7 +281,7 @@ function SurahReaderPage() {
 
             <div
               dir="rtl"
-              className="quran-arabic text-right leading-[2.5] text-slate-900 dark:text-white"
+              className="quran-arabic text-end leading-[2.5] text-slate-900 dark:text-white"
               style={{ fontSize: `${fontSize}px` }}
             >
               {surah.ayahs.map((ayah, index) => {
@@ -317,7 +332,7 @@ function SurahReaderPage() {
                     {isSelected && ayah.translation?.text && (
                       <span
                         dir="ltr"
-                        className="my-5 flex items-start gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-left font-sans text-base leading-8 text-slate-600 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-300"
+                        className="my-5 flex items-start gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-start font-sans text-base leading-8 text-slate-600 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-300"
                       >
                         <span className="flex shrink-0 flex-col gap-2">
                           <button
@@ -327,8 +342,12 @@ function SurahReaderPage() {
                               playQueue(tracks, index);
                             }}
                             className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-emerald-700 text-white transition hover:bg-emerald-800"
-                            title={`Play Ayah ${ayah.numberInSurah}`}
-                            aria-label={`Play Ayah ${ayah.numberInSurah}`}
+                            title={t("reader.playAyah", {
+                              number: ayah.numberInSurah,
+                            })}
+                            aria-label={t("reader.playAyah", {
+                              number: ayah.numberInSurah,
+                            })}
                           >
                             <Play size={16} fill="currentColor" />
                           </button>
@@ -360,15 +379,19 @@ function SurahReaderPage() {
                                 }`}
                                 title={
                                   isSaving
-                                    ? "Updating bookmark..."
+                                    ? t("reader.updatingBookmark")
                                     : isBookmarked
-                                      ? "Remove bookmark"
-                                      : "Save bookmark"
+                                      ? t("reader.removeBookmark")
+                                      : t("reader.saveAyah", {
+                                          number: ayah.numberInSurah,
+                                        })
                                 }
                                 aria-label={
                                   isBookmarked
-                                    ? `Remove bookmark for Ayah ${ayah.numberInSurah}`
-                                    : `Save Ayah ${ayah.numberInSurah}`
+                                    ? t("reader.removeBookmark")
+                                    : t("reader.saveAyah", {
+                                        number: ayah.numberInSurah,
+                                      })
                                 }
                                 aria-pressed={isBookmarked}
                               >
@@ -429,10 +452,8 @@ function SurahReaderPage() {
         });
       }
     } catch (exception) {
-      setBookmarkError(
-        exception.response?.data?.message ??
-          "Could not update bookmark. Please try again.",
-      );
+      console.error("Could not update bookmark:", exception);
+      setBookmarkError("reader.bookmarkUpdateError");
     } finally {
       setBookmarkActionKey(null);
     }

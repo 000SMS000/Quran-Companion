@@ -52,7 +52,9 @@ function SettingsPage() {
     (edition) => edition.identifier === audioEdition,
   );
   const selectedEditionName =
-    selectedEdition?.englishName || selectedEdition?.name || audioEdition;
+    (language === "ar"
+      ? selectedEdition?.name || selectedEdition?.englishName
+      : selectedEdition?.englishName || selectedEdition?.name) || audioEdition;
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6 lg:px-8">
@@ -185,7 +187,10 @@ function SettingsPage() {
                       key={edition.identifier}
                       value={edition.identifier}
                     >
-                      {edition.englishName || edition.name || edition.identifier}
+                      {(language === "ar"
+                        ? edition.name || edition.englishName
+                        : edition.englishName || edition.name) ||
+                        edition.identifier}
                     </option>
                   ))}
                 </select>

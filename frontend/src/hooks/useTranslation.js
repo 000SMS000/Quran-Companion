@@ -13,12 +13,14 @@ export function useTranslation() {
 
   const t = useCallback(
     (key, values = {}) => {
-      const value = key
+      const resolve = (dictionary) =>
+        key
         .split(".")
-        .reduce((current, part) => current?.[part], translations[language]);
+        .reduce((current, part) => current?.[part], dictionary);
+      const value = resolve(translations[language]) ?? resolve(translations.en);
 
       if (typeof value !== "string") {
-        return key;
+        return "";
       }
 
       return value.replace(/\{\{(\w+)\}\}/g, (placeholder, name) =>

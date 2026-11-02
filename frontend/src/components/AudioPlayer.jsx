@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Pause, Play, SkipBack, SkipForward, Volume2 } from "lucide-react";
 import { useAudioPlayer } from "../contexts/AudioPlayerContext";
+import { usePreferences } from "../contexts/PreferencesContext";
+import { useTranslation } from "../hooks/useTranslation";
 
 function formatTime(value) {
   if (!Number.isFinite(value)) {
@@ -17,6 +19,8 @@ function formatTime(value) {
 
 function AudioPlayer() {
   const audioRef = useRef(null);
+  const { language } = usePreferences();
+  const { t } = useTranslation();
 
   const { currentTrack, canPlayNext, canPlayPrevious, playNext, playPrevious } =
     useAudioPlayer();
@@ -25,6 +29,15 @@ function AudioPlayer() {
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(0.85);
+  const currentTrackTitle = currentTrack
+    ? t("audioPlayer.trackTitle", {
+        surah:
+          language === "ar"
+            ? currentTrack.surahArabicName ?? currentTrack.title
+            : currentTrack.surahEnglishName ?? currentTrack.title,
+        number: currentTrack.ayahNumber,
+      })
+    : t("audioPlayer.selectAyah");
 
   /*
    * Load and start a new track.
@@ -152,12 +165,12 @@ function AudioPlayer() {
       <div className="mx-auto flex max-w-7xl flex-col gap-3 md:flex-row md:items-center">
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-slate-900 dark:text-white">
-            {currentTrack ? currentTrack.title : "Select an ayah to play"}
+            {currentTrackTitle}
           </p>
 
           <p className="truncate text-xs text-slate-500 dark:text-slate-400">
             {currentTrack?.subtitle ??
-              "Verse-by-verse recitation will appear here."}
+              t("audioPlayer.recitation")}
           </p>
         </div>
 
@@ -167,9 +180,9 @@ function AudioPlayer() {
             onClick={playPrevious}
             disabled={!canPlayPrevious}
             className="rounded-full p-2 text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-300 dark:hover:bg-white/10"
-            aria-label="Previous ayah"
+            aria-label={t("audioPlayer.previousAyah")}
           >
-            <SkipBack className="h-5 w-5" />
+            <SkipBack className="h-5 w-5 rtl:-scale-x-100" />
           </button>
 
           <button
@@ -177,7 +190,7 @@ function AudioPlayer() {
             onClick={togglePlayback}
             disabled={!currentTrack}
             className="rounded-full bg-emerald-700 p-3 text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300 dark:disabled:bg-slate-700"
-            aria-label={isPlaying ? "Pause audio" : "Play audio"}
+            aria-label={isPlaying ? t("audioPlayer.pause") : t("audioPlayer.play")}
           >
             {isPlaying ? (
               <Pause className="h-5 w-5" />
@@ -191,12 +204,12 @@ function AudioPlayer() {
             onClick={playNext}
             disabled={!canPlayNext}
             className="rounded-full p-2 text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-300 dark:hover:bg-white/10"
-            aria-label="Next ayah"
+            aria-label={t("audioPlayer.nextAyah")}
           >
-            <SkipForward className="h-5 w-5" />
+            <SkipForward className="h-5 w-5 rtl:-scale-x-100" />
           </button>
 
-          <span className="w-12 text-right text-xs text-slate-500 dark:text-slate-400">
+          <span className="w-12 text-end text-xs text-slate-500 dark:text-slate-400">
             {formatTime(progress)}
           </span>
 
@@ -207,7 +220,7 @@ function AudioPlayer() {
             value={progress}
             onChange={handleSeek}
             className="h-1 flex-1 accent-emerald-700"
-            aria-label="Audio progress"
+            aria-label={t("audioPlayer.progress")}
           />
 
           <span className="w-12 text-xs text-slate-500 dark:text-slate-400">
@@ -226,7 +239,7 @@ function AudioPlayer() {
             value={volume}
             onChange={(event) => setVolume(Number(event.target.value))}
             className="w-24 accent-emerald-700"
-            aria-label="Audio volume"
+            aria-label={t("audioPlayer.volume")}
           />
         </label>
       </div>

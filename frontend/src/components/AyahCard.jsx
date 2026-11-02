@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Bookmark, Check, Copy, Play } from "lucide-react";
+import { useTranslation } from "../hooks/useTranslation";
 
 function AyahCard({ ayah, onPlay, showTranslation = false }) {
+  const { t } = useTranslation();
   const [bookmarked, setBookmarked] = useState(false);
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -43,8 +45,8 @@ function AyahCard({ ayah, onPlay, showTranslation = false }) {
           type="button"
           onClick={() => onPlay?.(ayah)}
           className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-          title="تشغيل الآية"
-          aria-label="تشغيل الآية"
+          title={t("ayahCard.play")}
+          aria-label={t("ayahCard.play")}
         >
           <Play size={16} fill="currentColor" />
         </button>
@@ -57,8 +59,9 @@ function AyahCard({ ayah, onPlay, showTranslation = false }) {
       <button
         type="button"
         onClick={() => setExpanded((current) => !current)}
-        className="block w-full text-right"
+        className="block w-full text-end"
         aria-expanded={translationVisible}
+        aria-label={t("ayahCard.showTranslation")}
       >
         <p
           dir="rtl"
@@ -66,17 +69,11 @@ function AyahCard({ ayah, onPlay, showTranslation = false }) {
           className="font-quran text-3xl leading-[2.2] text-zinc-900 dark:text-zinc-100"
         >
           {ayah.text}
-          <p
-            dir="rtl"
-            lang="ar"
-            className="font-quran text-3xl leading-[2.2] text-zinc-900 dark:text-zinc-100"
-          >
-          </p>
         </p>
 
         {!translationVisible && ayah.translation?.text && (
           <p className="mt-3 text-xs text-zinc-400 dark:text-zinc-500">
-            اضغط على الآية لعرض الترجمة
+            {t("ayahCard.showTranslation")}
           </p>
         )}
       </button>
@@ -99,7 +96,7 @@ function AyahCard({ ayah, onPlay, showTranslation = false }) {
           className="inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
         >
           {copied ? <Check size={16} /> : <Copy size={16} />}
-          {copied ? "تم النسخ" : "نسخ"}
+          {copied ? t("ayahCard.copied") : t("ayahCard.copy")}
         </button>
 
         <button
@@ -112,7 +109,7 @@ function AyahCard({ ayah, onPlay, showTranslation = false }) {
           }`}
         >
           <Bookmark size={16} fill={bookmarked ? "currentColor" : "none"} />
-          {bookmarked ? "محفوظة" : "حفظ"}
+          {bookmarked ? t("ayahCard.saved") : t("ayahCard.save")}
         </button>
       </div>
     </article>

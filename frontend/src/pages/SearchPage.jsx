@@ -148,10 +148,12 @@ function SearchPage() {
           visibleResults?.matches.length > 0 && (
             <div>
               <p className="mb-4 text-start text-sm text-slate-500 dark:text-slate-400">
-                {t("search.resultsCount", {
-                  count: visibleResults.count,
-                  query: searched,
-                })}
+                {visibleResults.count === 1
+                  ? t("search.resultsCountOne", { query: searched })
+                  : t("search.resultsCountMany", {
+                      count: visibleResults.count,
+                      query: searched,
+                    })}
               </p>
 
               <div className="space-y-4">
@@ -195,7 +197,7 @@ function SearchPage() {
                     <p
                       className={`mt-4 leading-8 ${
                         language === "ar"
-                          ? "quran-arabic text-right text-2xl text-slate-800 dark:text-slate-200"
+                          ? "quran-arabic text-end text-2xl text-slate-800 dark:text-slate-200"
                           : "text-start text-slate-700 dark:text-slate-300"
                       }`}
                     >
