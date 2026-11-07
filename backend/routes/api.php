@@ -14,6 +14,7 @@ Route::get('/health', function () {
 
 Route::prefix('quran')->group(function () {
     Route::get('/surahs', [QuranController::class, 'surahs']);
+    Route::get('/surahs/{number}/audio', [QuranController::class, 'surahAudio'])->whereNumber('number');
     Route::get('/surahs/{number}', [QuranController::class, 'surah'])->whereNumber('number');
     Route::get('/editions', [QuranController::class, 'editions']);
     Route::get('/search', [QuranController::class, 'search']);

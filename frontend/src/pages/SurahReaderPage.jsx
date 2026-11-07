@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Languages, Play, Bookmark } from "lucide-react";
+import {
+  ArrowLeft,
+  Bookmark,
+  CircleAlert,
+  Languages,
+  Loader2,
+  Pause,
+  Play,
+  Volume2,
+} from "lucide-react";
 import { getEditions, getSurah } from "../api/quranApi";
 import { getBookmarks, saveBookmark, deleteBookmark } from "../api/bookmarkApi";
 import ErrorState from "../components/ErrorState";
@@ -14,7 +23,15 @@ function SurahReaderPage() {
   const [searchParams] = useSearchParams();
   const ayahFromUrl = Number(searchParams.get("ayah")) || null;
 
-  const { currentTrack, playQueue } = useAudioPlayer();
+  const {
+    currentTrack,
+    playbackState,
+    playbackTrackId,
+    playQueue,
+    queueSyncError,
+    retryQueueSync,
+    setTrackPlaybackState,
+  } = useAudioPlayer();
   const { audioEdition, language } = usePreferences();
   const { t } = useTranslation();
 
@@ -140,6 +157,8 @@ function SurahReaderPage() {
       id: `${surah.number}:${ayah.numberInSurah}`,
       title: `${surah.englishName} · Ayah ${ayah.numberInSurah}`,
       subtitle: surah.audioEdition?.englishName,
+      surahNumber: surah.number,
+      audioEdition: surah.audioEdition?.identifier,
       surahEnglishName: surah.englishName,
       surahArabicName: surah.name,
       ayahNumber: ayah.numberInSurah,
@@ -287,8 +306,10 @@ function SurahReaderPage() {
               {surah.ayahs.map((ayah, index) => {
                 const isSelected = selectedAyah === ayah.numberInSurah;
 
-                const isCurrent =
-                  currentTrack?.id === `${surah.number}:${ayah.numberInSurah}`;
+                const trackId = `${surah.number}:${ayah.numberInSurah}`;
+                const isCurrent = currentTrack?.id === trackId;
+                const ayahPlaybackState =
+                  playbackTrackId === trackId ? playbackState : "idle";
 
                 let text = ayah.text;
 
@@ -327,6 +348,74 @@ function SurahReaderPage() {
                       {ayah.numberInSurah}
                     </span>
 
+                    {(isSelected || isCurrent) && (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (isCurrent && ayahPlaybackState === "playing") {
+                            setTrackPlaybackState(trackId, "paused");
+                          } else if (
+                            isCurrent &&
+                            ayahPlaybackState === "loading"
+                          ) {
+                            setTrackPlaybackState(trackId, "paused");
+                          } else if (
+                            isCurrent &&
+                            ayahPlaybackState === "error" &&
+                            queueSyncError
+                          ) {
+                            retryQueueSync();
+                          } else {
+                            playQueue(tracks, index);
+                          }
+                        }}
+                        className={`mx-1 inline-flex h-7 w-7 items-center justify-center rounded-full text-white transition ${
+                          ayahPlaybackState === "error"
+                            ? "bg-red-700 hover:bg-red-800"
+                            : "bg-emerald-700 hover:bg-emerald-800"
+                        }`}
+                        title={
+                          ayahPlaybackState === "loading"
+                            ? t("reader.audioLoading")
+                            : ayahPlaybackState === "playing"
+                              ? t("reader.audioPlaying")
+                              : ayahPlaybackState === "paused"
+                                ? t("reader.audioPaused")
+                                : ayahPlaybackState === "error"
+                                  ? t("reader.audioError")
+                                  : t("reader.playAyah", {
+                                      number: ayah.numberInSurah,
+                                    })
+                        }
+                        aria-label={
+                          ayahPlaybackState === "loading"
+                            ? t("reader.audioLoading")
+                            : ayahPlaybackState === "playing"
+                              ? t("reader.audioPlaying")
+                              : ayahPlaybackState === "paused"
+                                ? t("reader.audioPaused")
+                                : ayahPlaybackState === "error"
+                                  ? t("reader.audioError")
+                                  : t("reader.playAyah", {
+                                      number: ayah.numberInSurah,
+                                    })
+                        }
+                      >
+                        {ayahPlaybackState === "loading" ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : ayahPlaybackState === "playing" ? (
+                          <Volume2 className="h-4 w-4 animate-pulse" />
+                        ) : ayahPlaybackState === "paused" ? (
+                          <Pause className="h-4 w-4" />
+                        ) : ayahPlaybackState === "error" ? (
+                          <CircleAlert className="h-4 w-4" />
+                        ) : (
+                          <Play size={14} fill="currentColor" />
+                        )}
+                      </button>
+                    )}
+
                     {/* Translation && save */}
 
                     {isSelected && ayah.translation?.text && (
@@ -335,23 +424,6 @@ function SurahReaderPage() {
                         className="my-5 flex items-start gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-start font-sans text-base leading-8 text-slate-600 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-300"
                       >
                         <span className="flex shrink-0 flex-col gap-2">
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              playQueue(tracks, index);
-                            }}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-emerald-700 text-white transition hover:bg-emerald-800"
-                            title={t("reader.playAyah", {
-                              number: ayah.numberInSurah,
-                            })}
-                            aria-label={t("reader.playAyah", {
-                              number: ayah.numberInSurah,
-                            })}
-                          >
-                            <Play size={16} fill="currentColor" />
-                          </button>
-
                           {(() => {
                             const bookmark = bookmarks.find(
                               (item) =>

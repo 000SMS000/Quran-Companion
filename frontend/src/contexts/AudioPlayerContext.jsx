@@ -1,45 +1,288 @@
-import { createContext, useContext, useMemo, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { getSurahAudio } from '../api/quranApi';
+import { usePreferences } from './PreferencesContext';
 
 const AudioPlayerContext = createContext(null);
 
 export function AudioPlayerProvider({ children }) {
+  const { audioEdition } = usePreferences();
   const [queue, setQueue] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
+  const [playbackState, setPlaybackState] = useState('idle');
+  const [playbackTrackId, setPlaybackTrackId] = useState(null);
+  const [playbackRequestId, setPlaybackRequestId] = useState(0);
+  const [playbackRequestedAt, setPlaybackRequestedAt] = useState(null);
+  const [queueSyncError, setQueueSyncError] = useState(false);
+  const [queueSyncAttempt, setQueueSyncAttempt] = useState(0);
+  const queueRef = useRef(queue);
+  const currentIndexRef = useRef(currentIndex);
+  const activeTrackIdRef = useRef(playbackTrackId);
+  const playbackStateRef = useRef(playbackState);
+  const queueRevisionRef = useRef(0);
+  const audioEditionRef = useRef(audioEdition);
+
+  queueRef.current = queue;
+  currentIndexRef.current = currentIndex;
+  activeTrackIdRef.current = playbackTrackId;
+  playbackStateRef.current = playbackState;
+  audioEditionRef.current = audioEdition;
 
   const currentTrack = currentIndex >= 0 ? queue[currentIndex] : null;
 
-  function playQueue(tracks, index = 0) {
+  const playQueue = useCallback((tracks, index = 0) => {
     const playableTracks = tracks.filter((track) => track.audioUrl);
     const target = tracks[index];
-    const playableIndex = playableTracks.findIndex((track) => track.id === target?.id);
+    const playableIndex = playableTracks.findIndex(
+      (track) => track.id === target?.id,
+    );
+    const nextIndex =
+      playableIndex >= 0
+        ? playableIndex
+        : playableTracks.length > 0
+          ? 0
+          : -1;
+    const selectedTrack = nextIndex >= 0 ? playableTracks[nextIndex] : null;
+    const queueChanged =
+      queueRef.current.length !== playableTracks.length ||
+      queueRef.current.some(
+        (track, trackIndex) =>
+          track.id !== playableTracks[trackIndex]?.id ||
+          track.audioUrl !== playableTracks[trackIndex]?.audioUrl ||
+          track.audioEdition !== playableTracks[trackIndex]?.audioEdition,
+      );
 
-    setQueue(playableTracks);
-    setCurrentIndex(playableIndex >= 0 ? playableIndex : 0);
-  }
+    if (queueChanged) {
+      queueRevisionRef.current += 1;
+      queueRef.current = playableTracks;
+      setQueue(playableTracks);
+    }
 
-  function playNext() {
-    setCurrentIndex((index) => (index < queue.length - 1 ? index + 1 : index));
-  }
+    currentIndexRef.current = nextIndex;
+    setCurrentIndex(nextIndex);
 
-  function playPrevious() {
-    setCurrentIndex((index) => (index > 0 ? index - 1 : index));
-  }
+    const isSameActiveTrack = selectedTrack?.id === activeTrackIdRef.current;
+
+    if (
+      isSameActiveTrack &&
+      (playbackStateRef.current === 'loading' ||
+        playbackStateRef.current === 'playing')
+    ) {
+      return;
+    }
+
+    activeTrackIdRef.current = selectedTrack?.id ?? null;
+    setPlaybackTrackId(selectedTrack?.id ?? null);
+    playbackStateRef.current = selectedTrack ? 'loading' : 'idle';
+    setPlaybackState(playbackStateRef.current);
+    setPlaybackRequestId((requestId) => requestId + 1);
+    const requestedAt = performance.now();
+    setPlaybackRequestedAt(requestedAt);
+
+    if (import.meta.env.DEV) {
+      console.debug('Audio Ayah selection', {
+        trackId: selectedTrack?.id,
+        queueSelectionDurationMs: performance.now() - requestedAt,
+      });
+    }
+  }, []);
+
+  const setTrackPlaybackState = useCallback((trackId, nextState) => {
+    if (activeTrackIdRef.current !== trackId) {
+      return;
+    }
+
+    playbackStateRef.current = nextState;
+    setPlaybackState(nextState);
+  }, []);
+
+  const selectRelativeTrack = useCallback((direction) => {
+    const nextIndex = currentIndexRef.current + direction;
+
+    if (nextIndex < 0 || nextIndex >= queueRef.current.length) {
+      return;
+    }
+
+    const nextTrack = queueRef.current[nextIndex];
+    currentIndexRef.current = nextIndex;
+    activeTrackIdRef.current = nextTrack.id;
+    playbackStateRef.current = 'loading';
+    setCurrentIndex(nextIndex);
+    setPlaybackTrackId(nextTrack.id);
+    setPlaybackState('loading');
+    setPlaybackRequestId((requestId) => requestId + 1);
+    setPlaybackRequestedAt(performance.now());
+  }, []);
+
+  const playNext = useCallback(() => {
+    selectRelativeTrack(1);
+  }, [selectRelativeTrack]);
+
+  const playPrevious = useCallback(() => {
+    selectRelativeTrack(-1);
+  }, [selectRelativeTrack]);
+
+  const retryQueueSync = useCallback(() => {
+    setQueueSyncError(false);
+    setQueueSyncAttempt((attempt) => attempt + 1);
+  }, []);
+
+  useEffect(() => {
+    if (!currentTrack) {
+      setQueueSyncError(false);
+      return undefined;
+    }
+
+    if (currentTrack.audioEdition === audioEdition) {
+      setQueueSyncError(false);
+      return undefined;
+    }
+
+    const surahNumber = currentTrack.surahNumber;
+
+    if (!surahNumber || !currentTrack.ayahNumber) {
+      setQueueSyncError(true);
+      console.error(
+        'Cannot update audio track with incomplete Surah or Ayah identifiers.',
+      );
+      setTrackPlaybackState(currentTrack.id, 'error');
+      return undefined;
+    }
+
+    let cancelled = false;
+    const queueRevision = queueRevisionRef.current;
+    const selectedTrackId = currentTrack.id;
+    const requestedAt = performance.now();
+    setQueueSyncError(false);
+    setTrackPlaybackState(selectedTrackId, 'loading');
+    setPlaybackRequestId((requestId) => requestId + 1);
+    setPlaybackRequestedAt(requestedAt);
+
+    getSurahAudio(surahNumber, audioEdition)
+      .then((surahAudio) => {
+        if (cancelled) {
+          return;
+        }
+
+        const audioUrls = new Map(
+          surahAudio.ayahs.map((ayah) => [
+            ayah.numberInSurah,
+            ayah.audio?.url,
+          ]),
+        );
+
+        if (!audioUrls.get(currentTrack.ayahNumber)) {
+          throw new Error(
+            'The selected audio edition has no URL for the active Ayah.',
+          );
+        }
+
+        setQueue((currentQueue) => {
+          if (
+            audioEditionRef.current !== audioEdition ||
+            queueRevisionRef.current !== queueRevision ||
+            activeTrackIdRef.current !== selectedTrackId
+          ) {
+            return currentQueue;
+          }
+
+          const nextQueue = currentQueue.map((track) => {
+            if (track.surahNumber !== surahNumber) {
+              return track;
+            }
+
+            const audioUrl = audioUrls.get(track.ayahNumber);
+            return audioUrl
+              ? {
+                  ...track,
+                  audioEdition,
+                  audioUrl,
+                  subtitle: surahAudio.edition?.englishName,
+                }
+              : track;
+          });
+          queueRef.current = nextQueue;
+          return nextQueue;
+        });
+
+        if (import.meta.env.DEV) {
+          console.debug('Audio edition metadata resolved', {
+            surahNumber,
+            audioEdition,
+            durationMs: performance.now() - requestedAt,
+            ayahCount: surahAudio.ayahs.length,
+          });
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error('Could not update the audio queue:', error);
+          setQueueSyncError(true);
+          setTrackPlaybackState(selectedTrackId, 'error');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    audioEdition,
+    currentTrack?.audioEdition,
+    currentTrack?.ayahNumber,
+    currentTrack?.id,
+    currentTrack?.surahNumber,
+    queue,
+    queueSyncAttempt,
+    setTrackPlaybackState,
+  ]);
 
   const value = useMemo(
     () => ({
       queue,
       currentTrack,
       currentIndex,
+      playbackState,
+      playbackTrackId,
+      playbackRequestId,
+      playbackRequestedAt,
+      queueSyncError,
       canPlayNext: currentIndex >= 0 && currentIndex < queue.length - 1,
       canPlayPrevious: currentIndex > 0,
       playQueue,
       playNext,
       playPrevious,
+      retryQueueSync,
+      setTrackPlaybackState,
     }),
-    [queue, currentTrack, currentIndex],
+    [
+      queue,
+      currentTrack,
+      currentIndex,
+      playbackState,
+      playbackTrackId,
+      playbackRequestId,
+      playbackRequestedAt,
+      queueSyncError,
+      playQueue,
+      playNext,
+      playPrevious,
+      retryQueueSync,
+      setTrackPlaybackState,
+    ],
   );
 
-  return <AudioPlayerContext.Provider value={value}>{children}</AudioPlayerContext.Provider>;
+  return (
+    <AudioPlayerContext.Provider value={value}>
+      {children}
+    </AudioPlayerContext.Provider>
+  );
 }
 
 export function useAudioPlayer() {

@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { Pause, Play, SkipBack, SkipForward, Volume2 } from "lucide-react";
+import {
+  Loader2,
+  Pause,
+  Play,
+  RotateCcw,
+  SkipBack,
+  SkipForward,
+  Volume2,
+} from "lucide-react";
 import { useAudioPlayer } from "../contexts/AudioPlayerContext";
 import { usePreferences } from "../contexts/PreferencesContext";
 import { useTranslation } from "../hooks/useTranslation";
@@ -17,18 +25,64 @@ function formatTime(value) {
   return `${minutes}:${seconds}`;
 }
 
+function getPlaybackErrorKey(error, mediaError) {
+  if (mediaError?.code === 2) {
+    return "audioPlayer.networkError";
+  }
+
+  if (mediaError?.code === 3 || mediaError?.code === 4) {
+    return "audioPlayer.invalidAudio";
+  }
+
+  if (error?.name === "NotAllowedError") {
+    return "audioPlayer.playbackBlocked";
+  }
+
+  return "audioPlayer.playbackError";
+}
+
 function AudioPlayer() {
   const audioRef = useRef(null);
-  const { language } = usePreferences();
+  const { audioEdition, language } = usePreferences();
   const { t } = useTranslation();
 
-  const { currentTrack, canPlayNext, canPlayPrevious, playNext, playPrevious } =
-    useAudioPlayer();
+  const {
+    currentTrack,
+    canPlayNext,
+    canPlayPrevious,
+    playNext,
+    playPrevious,
+    playbackState,
+    playbackTrackId,
+    playbackRequestId,
+    playbackRequestedAt,
+    queueSyncError,
+    retryQueueSync,
+    setTrackPlaybackState,
+  } = useAudioPlayer();
 
-  const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(0.85);
+  const [retryAttempt, setRetryAttempt] = useState(0);
+  const [playbackErrorKey, setPlaybackErrorKey] = useState(
+    "audioPlayer.playbackError",
+  );
+  const generationRef = useRef(0);
+  const shouldAutoplayRef = useRef(Boolean(currentTrack));
+  const awaitingEditionRef = useRef(null);
+  const playRequestedRef = useRef(false);
+  const playAttemptRef = useRef(0);
+  const hasPlayedRef = useRef(false);
+  const audioErrorRef = useRef(false);
+  const lastRetryAttemptRef = useRef(retryAttempt);
+  const currentTrackRef = useRef(currentTrack);
+  const audioEditionRef = useRef(audioEdition);
+  const navigationRef = useRef({ canPlayNext, playNext });
+  currentTrackRef.current = currentTrack;
+  audioEditionRef.current = audioEdition;
+  navigationRef.current = { canPlayNext, playNext };
+
   const currentTrackTitle = currentTrack
     ? t("audioPlayer.trackTitle", {
         surah:
@@ -39,66 +93,259 @@ function AudioPlayer() {
       })
     : t("audioPlayer.selectAyah");
 
-  /*
-   * Load and start a new track.
-   *
-   * We wait for the browser to load enough audio data
-   * before starting playback instead of calling load()
-   * and play() immediately.
-   */
   useEffect(() => {
     const audio = audioRef.current;
 
     if (!audio || !currentTrack?.audioUrl) {
-      setIsPlaying(false);
+      shouldAutoplayRef.current = false;
       setProgress(0);
       setDuration(0);
       return;
     }
 
-    let cancelled = false;
+    if (
+      currentTrack.audioEdition &&
+      currentTrack.audioEdition !== audioEdition
+    ) {
+      awaitingEditionRef.current = audioEdition;
+      playRequestedRef.current = false;
+      playAttemptRef.current += 1;
+      setTrackPlaybackState(
+        currentTrack.id,
+        queueSyncError ? "error" : "loading",
+      );
+      audio.pause();
+      return;
+    }
 
-    setIsPlaying(false);
+    if (awaitingEditionRef.current === currentTrack.audioEdition) {
+      awaitingEditionRef.current = null;
+    } else {
+      shouldAutoplayRef.current = true;
+    }
+
+    const generation = ++generationRef.current;
+    const isRetry = retryAttempt !== lastRetryAttemptRef.current;
+    lastRetryAttemptRef.current = retryAttempt;
+    playAttemptRef.current += 1;
+    const sourceUrl = currentTrack.audioUrl;
+    const trackId = currentTrack.id;
+    const trackEdition = currentTrack.audioEdition;
+    const selectionTime = playbackRequestedAt ?? performance.now();
+    const isCurrent = () =>
+      generationRef.current === generation &&
+      currentTrackRef.current?.id === trackId &&
+      currentTrackRef.current?.audioUrl === sourceUrl &&
+      currentTrackRef.current?.audioEdition === trackEdition &&
+      (!trackEdition || audioEditionRef.current === trackEdition) &&
+      audio.src === sourceUrl;
+
+    setTrackPlaybackState(trackId, "loading");
     setProgress(0);
     setDuration(0);
-
+    playRequestedRef.current = false;
+    hasPlayedRef.current = false;
+    audioErrorRef.current = false;
     audio.pause();
-    audio.src = currentTrack.audioUrl;
-    audio.load();
 
-    const startPlayback = async () => {
-      if (cancelled) {
+    const failPlayback = (error) => {
+      if (!isCurrent() || audioErrorRef.current) {
         return;
       }
 
+      const mediaError = audio.error;
+      const errorName = error?.name;
+      const errorKey = getPlaybackErrorKey(error, mediaError);
+
+      if (import.meta.env.DEV) {
+        let safeSource = sourceUrl;
+        try {
+          const parsedSource = new URL(sourceUrl);
+          safeSource = `${parsedSource.origin}${parsedSource.pathname}`;
+        } catch {
+          safeSource = "invalid audio URL";
+        }
+        console.warn("Audio playback failed:", {
+          trackId,
+          audioEdition: trackEdition,
+          source: safeSource,
+          mediaErrorCode: mediaError?.code,
+          mediaErrorMessage: mediaError?.message,
+          rejectionName: errorName,
+          rejectionMessage: error?.message,
+        });
+      }
+
+      audioErrorRef.current = true;
+      shouldAutoplayRef.current = false;
+      playRequestedRef.current = false;
+      setPlaybackErrorKey(errorKey);
+      setTrackPlaybackState(trackId, "error");
+    };
+
+    const startPlayback = async () => {
+      if (!isCurrent() || !shouldAutoplayRef.current || playRequestedRef.current) {
+        return;
+      }
+
+      playRequestedRef.current = true;
+      const attempt = ++playAttemptRef.current;
+
       try {
         await audio.play();
-
-        if (!cancelled) {
-          setIsPlaying(true);
-        }
       } catch (error) {
-        if (!cancelled) {
-          console.warn("Audio playback could not start:", error);
-          setIsPlaying(false);
+        if (playAttemptRef.current === attempt) {
+          failPlayback(error);
         }
       }
     };
 
-    const handleCanPlay = () => {
-      startPlayback();
+    const handleLoadStart = () => {
+      if (isCurrent() && !audioErrorRef.current) {
+        setTrackPlaybackState(trackId, "loading");
+        if (import.meta.env.DEV) {
+          console.debug("Audio source loading", {
+            trackId,
+            elapsedMs: performance.now() - selectionTime,
+          });
+        }
+      }
     };
+    const handleCanPlay = () => {
+      if (!isCurrent() || audioErrorRef.current) {
+        return;
+      }
 
-    audio.addEventListener("canplay", handleCanPlay, {
-      once: true,
-    });
+      if (import.meta.env.DEV) {
+        console.debug("Audio canplay", {
+          trackId,
+          elapsedMs: performance.now() - selectionTime,
+        });
+      }
+
+      if (!shouldAutoplayRef.current) {
+        setTrackPlaybackState(trackId, "paused");
+      }
+    };
+    const handlePlaying = () => {
+      if (isCurrent() && !audioErrorRef.current) {
+        hasPlayedRef.current = true;
+        setTrackPlaybackState(trackId, "playing");
+        if (import.meta.env.DEV) {
+          console.debug("Audio playing", {
+            trackId,
+            elapsedMs: performance.now() - selectionTime,
+          });
+        }
+      }
+    };
+    const handleWaiting = () => {
+      if (
+        isCurrent() &&
+        !audioErrorRef.current &&
+        shouldAutoplayRef.current
+      ) {
+        setTrackPlaybackState(trackId, "loading");
+      }
+    };
+    const handlePause = () => {
+      if (
+        isCurrent() &&
+        !audioErrorRef.current &&
+        !audio.ended &&
+        (!shouldAutoplayRef.current || hasPlayedRef.current)
+      ) {
+        shouldAutoplayRef.current = false;
+        playRequestedRef.current = false;
+        setTrackPlaybackState(trackId, "paused");
+      }
+    };
+    const handleTimeUpdate = () => {
+      if (isCurrent()) {
+        setProgress(audio.currentTime);
+      }
+    };
+    const handleLoadedMetadata = () => {
+      if (isCurrent()) {
+        setDuration(audio.duration);
+      }
+    };
+    const handleEnded = () => {
+      if (!isCurrent()) {
+        return;
+      }
+
+      if (navigationRef.current.canPlayNext) {
+        navigationRef.current.playNext();
+      } else {
+        shouldAutoplayRef.current = false;
+        setTrackPlaybackState(trackId, "paused");
+      }
+    };
+    const handleError = () => failPlayback(audio.error);
+
+    const listeners = [
+      ["loadstart", handleLoadStart],
+      ["canplay", handleCanPlay],
+      ["playing", handlePlaying],
+      ["waiting", handleWaiting],
+      ["stalled", handleWaiting],
+      ["pause", handlePause],
+      ["timeupdate", handleTimeUpdate],
+      ["loadedmetadata", handleLoadedMetadata],
+      ["ended", handleEnded],
+      ["error", handleError],
+    ];
+    listeners.forEach(([event, listener]) =>
+      audio.addEventListener(event, listener),
+    );
+    if (import.meta.env.DEV) {
+      console.debug("Audio source assigned", {
+        trackId,
+        audioEdition: trackEdition,
+        selectionElapsedMs: performance.now() - selectionTime,
+      });
+    }
+    audio.src = sourceUrl;
+    if (isRetry) {
+      audio.load();
+    }
+    startPlayback();
 
     return () => {
-      cancelled = true;
-      audio.removeEventListener("canplay", handleCanPlay);
+      generationRef.current += 1;
+      listeners.forEach(([event, listener]) =>
+        audio.removeEventListener(event, listener),
+      );
       audio.pause();
     };
-  }, [currentTrack]);
+  }, [
+    audioEdition,
+    currentTrack?.audioEdition,
+    currentTrack?.audioUrl,
+    currentTrack?.id,
+    playbackRequestId,
+    playbackRequestedAt,
+    queueSyncError,
+    retryAttempt,
+    setTrackPlaybackState,
+  ]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+
+    if (
+      audio &&
+      currentTrack?.id === playbackTrackId &&
+      playbackState === "paused" &&
+      !audio.paused
+    ) {
+      shouldAutoplayRef.current = false;
+      playRequestedRef.current = false;
+      playAttemptRef.current += 1;
+      audio.pause();
+    }
+  }, [currentTrack?.id, playbackState, playbackTrackId]);
 
   // Update volume independently without reloading the track.
   useEffect(() => {
@@ -116,18 +363,64 @@ function AudioPlayer() {
       return;
     }
 
-    if (audio.paused) {
-      audio
-        .play()
-        .then(() => setIsPlaying(true))
-        .catch((error) => {
-          console.warn("Audio playback failed:", error);
-          setIsPlaying(false);
-        });
-    } else {
+    if (playbackState === "loading") {
+      shouldAutoplayRef.current = false;
+      playRequestedRef.current = false;
+      playAttemptRef.current += 1;
       audio.pause();
-      setIsPlaying(false);
+      setTrackPlaybackState(currentTrack.id, "paused");
+      return;
     }
+
+    if (playbackState === "paused" && audio.paused) {
+      shouldAutoplayRef.current = true;
+      playRequestedRef.current = false;
+      const attempt = ++playAttemptRef.current;
+      const generation = generationRef.current;
+      setTrackPlaybackState(currentTrack.id, "loading");
+      audio.play().catch((error) => {
+        if (
+          playAttemptRef.current !== attempt ||
+          generationRef.current !== generation
+        ) {
+          return;
+        }
+
+        if (import.meta.env.DEV) {
+          console.warn("Audio playback could not start:", {
+            trackId: currentTrack.id,
+            audioEdition: currentTrack.audioEdition,
+            mediaErrorCode: audio.error?.code,
+            mediaErrorMessage: audio.error?.message,
+            rejectionName: error.name,
+            rejectionMessage: error.message,
+          });
+        }
+        shouldAutoplayRef.current = false;
+        setPlaybackErrorKey(getPlaybackErrorKey(error, audio.error));
+        setTrackPlaybackState(currentTrack.id, "error");
+      });
+    } else {
+      shouldAutoplayRef.current = false;
+      playRequestedRef.current = false;
+      playAttemptRef.current += 1;
+      audio.pause();
+      setTrackPlaybackState(currentTrack.id, "paused");
+    }
+  }
+
+  function retryPlayback() {
+    if (queueSyncError || currentTrack?.audioEdition !== audioEdition) {
+      setTrackPlaybackState(currentTrack.id, "loading");
+      retryQueueSync();
+      return;
+    }
+
+    shouldAutoplayRef.current = true;
+    playRequestedRef.current = false;
+    playAttemptRef.current += 1;
+    setTrackPlaybackState(currentTrack.id, "loading");
+    setRetryAttempt((attempt) => attempt + 1);
   }
 
   function handleSeek(event) {
@@ -142,25 +435,7 @@ function AudioPlayer() {
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 border-t border-emerald-900/10 bg-white/95 px-4 py-3 shadow-[0_-12px_40px_rgba(15,23,42,0.08)] backdrop-blur dark:border-white/10 dark:bg-slate-950/95">
-      <audio
-        ref={audioRef}
-        preload="auto"
-        onTimeUpdate={(event) => setProgress(event.currentTarget.currentTime)}
-        onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
-        onPlay={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)}
-        onEnded={() => {
-          setIsPlaying(false);
-
-          if (canPlayNext) {
-            playNext();
-          }
-        }}
-        onError={(event) => {
-          console.warn("Audio element error:", event.currentTarget.error);
-          setIsPlaying(false);
-        }}
-      />
+      <audio ref={audioRef} preload="metadata" />
 
       <div className="mx-auto flex max-w-7xl flex-col gap-3 md:flex-row md:items-center">
         <div className="min-w-0 flex-1">
@@ -169,8 +444,21 @@ function AudioPlayer() {
           </p>
 
           <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-            {currentTrack?.subtitle ??
-              t("audioPlayer.recitation")}
+            {playbackState === "error" ? (
+              <span role="alert" className="text-red-700 dark:text-red-300">
+                {t(queueSyncError || currentTrack?.audioEdition !== audioEdition ? "audioPlayer.syncError" : playbackErrorKey)}{" "}
+                <button
+                  type="button"
+                  onClick={retryPlayback}
+                  className="ms-1 inline-flex items-center gap-1 font-medium underline underline-offset-2"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  {t("audioPlayer.retry")}
+                </button>
+              </span>
+            ) : (
+              currentTrack?.subtitle ?? t("audioPlayer.recitation")
+            )}
           </p>
         </div>
 
@@ -188,16 +476,31 @@ function AudioPlayer() {
           <button
             type="button"
             onClick={togglePlayback}
-            disabled={!currentTrack}
+            disabled={
+              !currentTrack ||
+              playbackState === "error"
+            }
             className="rounded-full bg-emerald-700 p-3 text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300 dark:disabled:bg-slate-700"
-            aria-label={isPlaying ? t("audioPlayer.pause") : t("audioPlayer.play")}
+            aria-label={
+              playbackState === "loading"
+                ? t("audioPlayer.loading")
+                : playbackState === "playing"
+                  ? t("audioPlayer.pause")
+                  : t("audioPlayer.play")
+            }
           >
-            {isPlaying ? (
+            {playbackState === "loading" ? (
+              <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+            ) : playbackState === "playing" ? (
               <Pause className="h-5 w-5" />
             ) : (
               <Play className="h-5 w-5" />
             )}
           </button>
+
+          <span className="sr-only" role="status" aria-live="polite">
+            {playbackState === "loading" ? t("audioPlayer.loading") : ""}
+          </span>
 
           <button
             type="button"

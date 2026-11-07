@@ -42,6 +42,25 @@ class QuranController extends Controller
         ));
     }
 
+    public function surahAudio(Request $request, int $number): JsonResponse
+    {
+        if ($number < 1 || $number > 114) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The selected Surah must be between 1 and 114.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'edition' => ['required', 'string', 'max:80'],
+        ]);
+
+        return $this->respond(fn () => $this->quran->getSurahAudio(
+            $number,
+            $validated['edition'],
+        ));
+    }
+
     public function editions(Request $request): JsonResponse
     {
         $validated = $request->validate([
