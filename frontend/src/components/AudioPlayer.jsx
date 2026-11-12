@@ -53,12 +53,14 @@ function AudioPlayer() {
     playNext,
     playPrevious,
     playbackState,
+    playbackIntent,
     playbackTrackId,
     playbackRequestId,
     playbackRequestedAt,
     queueSyncError,
     retryQueueSync,
     setTrackPlaybackState,
+    setTrackPlaybackIntent,
   } = useAudioPlayer();
 
   const [progress, setProgress] = useState(0);
@@ -70,7 +72,6 @@ function AudioPlayer() {
   );
   const generationRef = useRef(0);
   const shouldAutoplayRef = useRef(Boolean(currentTrack));
-  const awaitingEditionRef = useRef(null);
   const playRequestedRef = useRef(false);
   const playAttemptRef = useRef(0);
   const hasPlayedRef = useRef(false);
@@ -107,7 +108,7 @@ function AudioPlayer() {
       currentTrack.audioEdition &&
       currentTrack.audioEdition !== audioEdition
     ) {
-      awaitingEditionRef.current = audioEdition;
+      shouldAutoplayRef.current = playbackIntent;
       playRequestedRef.current = false;
       playAttemptRef.current += 1;
       setTrackPlaybackState(
@@ -118,11 +119,7 @@ function AudioPlayer() {
       return;
     }
 
-    if (awaitingEditionRef.current === currentTrack.audioEdition) {
-      awaitingEditionRef.current = null;
-    } else {
-      shouldAutoplayRef.current = true;
-    }
+    shouldAutoplayRef.current = playbackIntent;
 
     const generation = ++generationRef.current;
     const isRetry = retryAttempt !== lastRetryAttemptRef.current;
@@ -375,6 +372,7 @@ function AudioPlayer() {
     if (playbackState === "paused" && audio.paused) {
       shouldAutoplayRef.current = true;
       playRequestedRef.current = false;
+      setTrackPlaybackIntent(currentTrack.id, true);
       const attempt = ++playAttemptRef.current;
       const generation = generationRef.current;
       setTrackPlaybackState(currentTrack.id, "loading");
@@ -419,6 +417,7 @@ function AudioPlayer() {
     shouldAutoplayRef.current = true;
     playRequestedRef.current = false;
     playAttemptRef.current += 1;
+    setTrackPlaybackIntent(currentTrack.id, true);
     setTrackPlaybackState(currentTrack.id, "loading");
     setRetryAttempt((attempt) => attempt + 1);
   }

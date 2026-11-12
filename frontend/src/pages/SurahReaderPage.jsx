@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -8,15 +8,35 @@ import {
   Loader2,
   Pause,
   Play,
-  Volume2,
 } from "lucide-react";
-import { getEditions, getSurah } from "../api/quranApi";
+import { getEditions, getSurah, getSurahAudio } from "../api/quranApi";
 import { getBookmarks, saveBookmark, deleteBookmark } from "../api/bookmarkApi";
 import ErrorState from "../components/ErrorState";
 import LoadingState from "../components/LoadingState";
 import { useAudioPlayer } from "../contexts/AudioPlayerContext";
 import { usePreferences } from "../contexts/PreferencesContext";
 import { useTranslation } from "../hooks/useTranslation";
+
+function withAudioEdition(surah, audioData) {
+  const audioByAyah = new Map(
+    audioData.ayahs.map((ayah) => [
+      ayah.numberInSurah,
+      ayah.audio,
+    ]),
+  );
+
+  return {
+    ...surah,
+    audioEdition: audioData.edition,
+    ayahs: surah.ayahs.map((ayah) => ({
+      ...ayah,
+      audio: audioByAyah.get(ayah.numberInSurah) ?? {
+        url: null,
+        secondary: [],
+      },
+    })),
+  };
+}
 
 function SurahReaderPage() {
   const { number } = useParams();
@@ -46,6 +66,9 @@ function SurahReaderPage() {
   const [bookmarks, setBookmarks] = useState([]);
   const [bookmarkActionKey, setBookmarkActionKey] = useState(null);
   const [bookmarkError, setBookmarkError] = useState("");
+  const audioEditionRef = useRef(audioEdition);
+  const previousAudioEditionRef = useRef(audioEdition);
+  audioEditionRef.current = audioEdition;
 
   useEffect(() => {
     let cancelled = false;
@@ -68,7 +91,11 @@ function SurahReaderPage() {
     };
   }, []);
 
-  // Select the ayah from the URL.
+  const hasAyahFromUrl = Boolean(
+    surah?.ayahs.some((ayah) => ayah.numberInSurah === ayahFromUrl),
+  );
+
+  // Select the ayah from the URL without clearing manual selection when audio data refreshes.
   useEffect(() => {
     if (!surah) {
       return;
@@ -79,14 +106,10 @@ function SurahReaderPage() {
       return;
     }
 
-    const exists = surah.ayahs.some(
-      (ayah) => ayah.numberInSurah === ayahFromUrl,
-    );
-
-    if (exists) {
+    if (hasAyahFromUrl) {
       setSelectedAyah(ayahFromUrl);
     }
-  }, [surah, ayahFromUrl]);
+  }, [surah?.number, ayahFromUrl, hasAyahFromUrl]);
 
   // Scroll automatically to the selected ayah.
   useEffect(() => {
@@ -120,15 +143,28 @@ function SurahReaderPage() {
   // Load the selected Surah.
   useEffect(() => {
     let cancelled = false;
+    const requestedEdition = audioEditionRef.current;
 
     setLoading(true);
     setError("");
 
-    getSurah(number, { translation, audio: audioEdition })
+    getSurah(number, { translation, audio: requestedEdition })
       .then((data) => {
-        if (!cancelled) {
-          setSurah(data);
+        if (cancelled) {
+          return;
         }
+
+        if (audioEditionRef.current === requestedEdition) {
+          setSurah(data);
+          return;
+        }
+
+        const latestEdition = audioEditionRef.current;
+        return getSurahAudio(number, latestEdition).then((audioData) => {
+          if (!cancelled && audioEditionRef.current === latestEdition) {
+            setSurah(withAudioEdition(data, audioData));
+          }
+        });
       })
       .catch((exception) => {
         if (!cancelled) {
@@ -145,7 +181,39 @@ function SurahReaderPage() {
     return () => {
       cancelled = true;
     };
-  }, [number, translation, audioEdition]);
+  }, [number, translation]);
+
+  useEffect(() => {
+    if (previousAudioEditionRef.current === audioEdition) {
+      return undefined;
+    }
+
+    previousAudioEditionRef.current = audioEdition;
+    const surahNumber = Number(number);
+    let cancelled = false;
+
+    getSurahAudio(surahNumber, audioEdition)
+      .then((audioData) => {
+        if (cancelled || audioEditionRef.current !== audioEdition) {
+          return;
+        }
+
+        setSurah((currentSurah) =>
+          currentSurah?.number === surahNumber
+            ? withAudioEdition(currentSurah, audioData)
+            : currentSurah,
+        );
+      })
+      .catch((exception) => {
+        if (!cancelled) {
+          console.error("Could not load selected reciter audio:", exception);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [audioEdition, number]);
 
   // Build audio tracks for all ayahs.
   const tracks = useMemo(() => {
@@ -348,77 +416,9 @@ function SurahReaderPage() {
                       {ayah.numberInSurah}
                     </span>
 
-                    {(isSelected || isCurrent) && (
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          if (isCurrent && ayahPlaybackState === "playing") {
-                            setTrackPlaybackState(trackId, "paused");
-                          } else if (
-                            isCurrent &&
-                            ayahPlaybackState === "loading"
-                          ) {
-                            setTrackPlaybackState(trackId, "paused");
-                          } else if (
-                            isCurrent &&
-                            ayahPlaybackState === "error" &&
-                            queueSyncError
-                          ) {
-                            retryQueueSync();
-                          } else {
-                            playQueue(tracks, index);
-                          }
-                        }}
-                        className={`mx-1 inline-flex h-7 w-7 items-center justify-center rounded-full text-white transition ${
-                          ayahPlaybackState === "error"
-                            ? "bg-red-700 hover:bg-red-800"
-                            : "bg-emerald-700 hover:bg-emerald-800"
-                        }`}
-                        title={
-                          ayahPlaybackState === "loading"
-                            ? t("reader.audioLoading")
-                            : ayahPlaybackState === "playing"
-                              ? t("reader.audioPlaying")
-                              : ayahPlaybackState === "paused"
-                                ? t("reader.audioPaused")
-                                : ayahPlaybackState === "error"
-                                  ? t("reader.audioError")
-                                  : t("reader.playAyah", {
-                                      number: ayah.numberInSurah,
-                                    })
-                        }
-                        aria-label={
-                          ayahPlaybackState === "loading"
-                            ? t("reader.audioLoading")
-                            : ayahPlaybackState === "playing"
-                              ? t("reader.audioPlaying")
-                              : ayahPlaybackState === "paused"
-                                ? t("reader.audioPaused")
-                                : ayahPlaybackState === "error"
-                                  ? t("reader.audioError")
-                                  : t("reader.playAyah", {
-                                      number: ayah.numberInSurah,
-                                    })
-                        }
-                      >
-                        {ayahPlaybackState === "loading" ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : ayahPlaybackState === "playing" ? (
-                          <Volume2 className="h-4 w-4 animate-pulse" />
-                        ) : ayahPlaybackState === "paused" ? (
-                          <Pause className="h-4 w-4" />
-                        ) : ayahPlaybackState === "error" ? (
-                          <CircleAlert className="h-4 w-4" />
-                        ) : (
-                          <Play size={14} fill="currentColor" />
-                        )}
-                      </button>
-                    )}
-
                     {/* Translation && save */}
 
-                    {isSelected && ayah.translation?.text && (
+                    {isSelected && (
                       <span
                         dir="ltr"
                         className="my-5 flex items-start gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-start font-sans text-base leading-8 text-slate-600 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-300"
@@ -437,46 +437,114 @@ function SurahReaderPage() {
                               `${surah.number}:${ayah.numberInSurah}`;
 
                             return (
-                              <button
-                                type="button"
-                                disabled={bookmarkActionKey !== null}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  handleBookmarkToggle(ayah.numberInSurah);
-                                }}
-                                className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition disabled:cursor-wait disabled:opacity-50 ${
-                                  isBookmarked
-                                    ? "border-amber-500 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
-                                    : "border-slate-300 bg-white text-slate-600 hover:border-amber-500 hover:text-amber-700 dark:border-white/20 dark:bg-slate-800 dark:text-slate-300"
-                                }`}
-                                title={
-                                  isSaving
-                                    ? t("reader.updatingBookmark")
-                                    : isBookmarked
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={bookmarkActionKey !== null}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleBookmarkToggle(ayah.numberInSurah);
+                                  }}
+                                  className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition disabled:cursor-wait disabled:opacity-50 ${
+                                    isBookmarked
+                                      ? "border-amber-500 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                                      : "border-slate-300 bg-white text-slate-600 hover:border-amber-500 hover:text-amber-700 dark:border-white/20 dark:bg-slate-800 dark:text-slate-300"
+                                  }`}
+                                  title={
+                                    isSaving
+                                      ? t("reader.updatingBookmark")
+                                      : isBookmarked
+                                        ? t("reader.removeBookmark")
+                                        : t("reader.saveAyah", {
+                                            number: ayah.numberInSurah,
+                                          })
+                                  }
+                                  aria-label={
+                                    isBookmarked
                                       ? t("reader.removeBookmark")
                                       : t("reader.saveAyah", {
                                           number: ayah.numberInSurah,
                                         })
-                                }
-                                aria-label={
-                                  isBookmarked
-                                    ? t("reader.removeBookmark")
-                                    : t("reader.saveAyah", {
-                                        number: ayah.numberInSurah,
-                                      })
-                                }
-                                aria-pressed={isBookmarked}
-                              >
-                                <Bookmark
-                                  size={17}
-                                  fill={isBookmarked ? "currentColor" : "none"}
-                                />
-                              </button>
+                                  }
+                                  aria-pressed={isBookmarked}
+                                >
+                                  <Bookmark
+                                    size={17}
+                                    fill={isBookmarked ? "currentColor" : "none"}
+                                  />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    if (
+                                      isCurrent &&
+                                      ayahPlaybackState === "playing"
+                                    ) {
+                                      setTrackPlaybackState(trackId, "paused");
+                                    } else if (
+                                      isCurrent &&
+                                      ayahPlaybackState === "error" &&
+                                      queueSyncError
+                                    ) {
+                                      retryQueueSync();
+                                    } else {
+                                      playQueue(tracks, index);
+                                    }
+                                  }}
+                                  className={`inline-flex h-9 w-9 items-center justify-center rounded-full text-white transition ${
+                                    ayahPlaybackState === "error"
+                                      ? "bg-red-700 hover:bg-red-800"
+                                      : "bg-emerald-700 hover:bg-emerald-800"
+                                  }`}
+                                  title={
+                                    ayahPlaybackState === "loading"
+                                      ? t("reader.audioLoading")
+                                      : ayahPlaybackState === "playing"
+                                        ? t("reader.pauseAyah")
+                                        : ayahPlaybackState === "paused"
+                                          ? t("reader.audioPaused")
+                                          : ayahPlaybackState === "error"
+                                            ? t("reader.audioError")
+                                            : t("reader.playAyah", {
+                                                number: ayah.numberInSurah,
+                                              })
+                                  }
+                                  aria-label={
+                                    ayahPlaybackState === "loading"
+                                      ? t("reader.audioLoading")
+                                      : ayahPlaybackState === "playing"
+                                        ? t("reader.pauseAyah")
+                                        : ayahPlaybackState === "paused"
+                                          ? t("reader.playAyah", {
+                                              number: ayah.numberInSurah,
+                                            })
+                                          : ayahPlaybackState === "error"
+                                            ? t("reader.audioError")
+                                            : t("reader.playAyah", {
+                                                number: ayah.numberInSurah,
+                                              })
+                                  }
+                                >
+                                  {ayahPlaybackState === "loading" ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : ayahPlaybackState === "playing" ? (
+                                    <Pause className="h-4 w-4" />
+                                  ) : ayahPlaybackState === "error" ? (
+                                    <CircleAlert className="h-4 w-4" />
+                                  ) : (
+                                    <Play size={14} fill="currentColor" />
+                                  )}
+                                </button>
+                              </>
                             );
                           })()}
                         </span>
 
-                        <span className="flex-1">{ayah.translation.text}</span>
+                        {ayah.translation?.text && (
+                          <span className="flex-1">{ayah.translation.text}</span>
+                        )}
                       </span>
                     )}
                   </span>

@@ -17,6 +17,7 @@ export function AudioPlayerProvider({ children }) {
   const [queue, setQueue] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [playbackState, setPlaybackState] = useState('idle');
+  const [playbackIntent, setPlaybackIntent] = useState(false);
   const [playbackTrackId, setPlaybackTrackId] = useState(null);
   const [playbackRequestId, setPlaybackRequestId] = useState(0);
   const [playbackRequestedAt, setPlaybackRequestedAt] = useState(null);
@@ -26,6 +27,7 @@ export function AudioPlayerProvider({ children }) {
   const currentIndexRef = useRef(currentIndex);
   const activeTrackIdRef = useRef(playbackTrackId);
   const playbackStateRef = useRef(playbackState);
+  const playbackIntentRef = useRef(playbackIntent);
   const queueRevisionRef = useRef(0);
   const audioEditionRef = useRef(audioEdition);
 
@@ -33,6 +35,7 @@ export function AudioPlayerProvider({ children }) {
   currentIndexRef.current = currentIndex;
   activeTrackIdRef.current = playbackTrackId;
   playbackStateRef.current = playbackState;
+  playbackIntentRef.current = playbackIntent;
   audioEditionRef.current = audioEdition;
 
   const currentTrack = currentIndex >= 0 ? queue[currentIndex] : null;
@@ -43,12 +46,7 @@ export function AudioPlayerProvider({ children }) {
     const playableIndex = playableTracks.findIndex(
       (track) => track.id === target?.id,
     );
-    const nextIndex =
-      playableIndex >= 0
-        ? playableIndex
-        : playableTracks.length > 0
-          ? 0
-          : -1;
+    const nextIndex = playableIndex;
     const selectedTrack = nextIndex >= 0 ? playableTracks[nextIndex] : null;
     const queueChanged =
       queueRef.current.length !== playableTracks.length ||
@@ -73,13 +71,16 @@ export function AudioPlayerProvider({ children }) {
     if (
       isSameActiveTrack &&
       (playbackStateRef.current === 'loading' ||
-        playbackStateRef.current === 'playing')
+        playbackStateRef.current === 'playing') &&
+      playbackIntentRef.current
     ) {
       return;
     }
 
     activeTrackIdRef.current = selectedTrack?.id ?? null;
     setPlaybackTrackId(selectedTrack?.id ?? null);
+    playbackIntentRef.current = Boolean(selectedTrack);
+    setPlaybackIntent(playbackIntentRef.current);
     playbackStateRef.current = selectedTrack ? 'loading' : 'idle';
     setPlaybackState(playbackStateRef.current);
     setPlaybackRequestId((requestId) => requestId + 1);
@@ -101,6 +102,23 @@ export function AudioPlayerProvider({ children }) {
 
     playbackStateRef.current = nextState;
     setPlaybackState(nextState);
+
+    if (nextState === 'paused' || nextState === 'error') {
+      playbackIntentRef.current = false;
+      setPlaybackIntent(false);
+    } else if (nextState === 'playing') {
+      playbackIntentRef.current = true;
+      setPlaybackIntent(true);
+    }
+  }, []);
+
+  const setTrackPlaybackIntent = useCallback((trackId, shouldPlay) => {
+    if (activeTrackIdRef.current !== trackId) {
+      return;
+    }
+
+    playbackIntentRef.current = shouldPlay;
+    setPlaybackIntent(shouldPlay);
   }, []);
 
   const selectRelativeTrack = useCallback((direction) => {
@@ -113,6 +131,8 @@ export function AudioPlayerProvider({ children }) {
     const nextTrack = queueRef.current[nextIndex];
     currentIndexRef.current = nextIndex;
     activeTrackIdRef.current = nextTrack.id;
+    playbackIntentRef.current = true;
+    setPlaybackIntent(true);
     playbackStateRef.current = 'loading';
     setCurrentIndex(nextIndex);
     setPlaybackTrackId(nextTrack.id);
@@ -131,6 +151,8 @@ export function AudioPlayerProvider({ children }) {
 
   const retryQueueSync = useCallback(() => {
     setQueueSyncError(false);
+    playbackIntentRef.current = true;
+    setPlaybackIntent(true);
     setQueueSyncAttempt((attempt) => attempt + 1);
   }, []);
 
@@ -249,6 +271,7 @@ export function AudioPlayerProvider({ children }) {
       currentTrack,
       currentIndex,
       playbackState,
+      playbackIntent,
       playbackTrackId,
       playbackRequestId,
       playbackRequestedAt,
@@ -260,12 +283,14 @@ export function AudioPlayerProvider({ children }) {
       playPrevious,
       retryQueueSync,
       setTrackPlaybackState,
+      setTrackPlaybackIntent,
     }),
     [
       queue,
       currentTrack,
       currentIndex,
       playbackState,
+      playbackIntent,
       playbackTrackId,
       playbackRequestId,
       playbackRequestedAt,
@@ -275,6 +300,7 @@ export function AudioPlayerProvider({ children }) {
       playPrevious,
       retryQueueSync,
       setTrackPlaybackState,
+      setTrackPlaybackIntent,
     ],
   );
 

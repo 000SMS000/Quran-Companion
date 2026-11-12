@@ -52,6 +52,7 @@ const common = {
     translation: "Translation",
     arabicFontSize: "Arabic text size",
     playAyah: "Play verse {{number}}",
+    pauseAyah: "Pause verse audio",
     audioLoading: "Loading verse audio",
     audioPlaying: "Verse is playing",
     audioPaused: "Verse audio is paused",

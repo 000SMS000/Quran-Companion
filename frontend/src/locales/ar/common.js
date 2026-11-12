@@ -51,6 +51,7 @@ const common = {
     translation: "الترجمة",
     arabicFontSize: "حجم الخط العربي",
     playAyah: "تشغيل الآية {{number}}",
+    pauseAyah: "إيقاف تلاوة الآية مؤقتًا",
     audioLoading: "جارٍ تحميل تلاوة الآية",
     audioPlaying: "الآية قيد التشغيل",
     audioPaused: "تلاوة الآية متوقفة مؤقتًا",
