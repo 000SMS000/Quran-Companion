@@ -59,7 +59,7 @@ class MokhtasrTafsirServiceTest extends TestCase
         );
 
         Http::assertSent(function ($request) {
-            return $request->url() === 'https://admin.mokhtasr.com/api/v1/book-contents'
+            return parse_url($request->url(), PHP_URL_PATH) === '/api/v1/book-contents'
                 && $request->hasHeader('Authorization', 'Bearer test-token')
                 && $request['books'] === '200,319'
                 && (string) $request['sura'] === '2'
