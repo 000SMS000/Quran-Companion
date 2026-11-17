@@ -90,10 +90,13 @@ class MokhtasrTafsirService
         $text = trim((string) ($book['text'] ?? ''));
         $plainText = $this->plainText($text);
         $range = $this->extractAyahRange($plainText, $requestedAyah);
+        $displayText = $range['isShared']
+            ? (preg_replace('/^\\s*\\d+\\s*[-–—]\\s*\\d+\\s*[-–—]\\s*/u', '', $plainText) ?? $plainText)
+            : $plainText;
 
         return [
             ...$book,
-            'plain_text' => $plainText,
+            'plain_text' => $displayText,
             'range' => $range,
         ];
     }
