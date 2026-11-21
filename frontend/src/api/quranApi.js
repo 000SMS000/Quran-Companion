@@ -1,6 +1,7 @@
 import api from './axios';
 
 const surahAudioRequests = new Map();
+const ayahTafsirRequests = new Map();
 
 export async function getSurahs() {
   const response = await api.get('/quran/surahs');
@@ -51,4 +52,25 @@ export async function searchQuran(query, params = {}) {
 export async function getAudioEditions() {
   const response = await api.get('/quran/audio-editions');
   return response.data.data;
+}
+
+export function getAyahTafsir(surahNumber, ayahNumber) {
+  const key = `${surahNumber}:${ayahNumber}`;
+  const pendingRequest = ayahTafsirRequests.get(key);
+
+  if (pendingRequest) {
+    return pendingRequest;
+  }
+
+  const request = api
+    .get(`/quran/surahs/${surahNumber}/ayahs/${ayahNumber}/tafsir`)
+    .then((response) => response.data.data)
+    .finally(() => {
+      if (ayahTafsirRequests.get(key) === request) {
+        ayahTafsirRequests.delete(key);
+      }
+    });
+
+  ayahTafsirRequests.set(key, request);
+  return request;
 }
