@@ -92,6 +92,21 @@ function SurahReaderPage() {
     }
   }, [surah?.number, ayahFromUrl, hasAyahFromUrl]);
 
+  // Follow the currently playing ayah so its tafsir opens automatically.
+  // This only syncs tracks from the surah currently displayed; manual selection
+  // remains independent when playback is paused or belongs to another surah.
+  useEffect(() => {
+    if (!surah || !currentTrack) {
+      return;
+    }
+
+    if (Number(currentTrack.surahNumber) !== surah.number) {
+      return;
+    }
+
+    setSelectedAyah(Number(currentTrack.ayahNumber));
+  }, [surah?.number, currentTrack?.id]);
+
   // Load tafsir only for the selected ayah; keep responses cached for this page.
   useEffect(() => {
     if (!selectedAyah) {
