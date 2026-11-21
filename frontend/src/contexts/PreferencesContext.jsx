@@ -43,7 +43,7 @@ export const AUDIO_EDITIONS = [
   },
   {
     "id": "everyayah.maher.128",
-    "folder": "Maher_AlMuaiqly_128kbps",
+    "folder": "MaherAlMuaiqly128kbps",
     "nameAr": "ماهر المعيقلي — مرتل",
     "nameEn": "Maher Al-Muaiqly — Murattal",
     "bitrate": "128kbps"
