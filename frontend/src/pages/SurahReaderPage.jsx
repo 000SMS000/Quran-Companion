@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -454,7 +454,7 @@ function SurahReaderPage() {
                 }
 
                 return (
-                  <span key={ayah.number}>
+                  <Fragment key={ayah.number}>
                     {/* Ayah */}
                     <span
                       id={`ayah-${ayah.numberInSurah}`}
@@ -669,7 +669,7 @@ function SurahReaderPage() {
                         </div>
                       </div>
                     )}
-                  </span>
+                  </Fragment>
                 );
               })}
             </div>
