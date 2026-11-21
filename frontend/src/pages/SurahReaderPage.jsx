@@ -14,7 +14,7 @@ import { getBookmarks, saveBookmark, deleteBookmark } from "../api/bookmarkApi";
 import ErrorState from "../components/ErrorState";
 import LoadingState from "../components/LoadingState";
 import { useAudioPlayer } from "../contexts/AudioPlayerContext";
-import { usePreferences } from "../contexts/PreferencesContext";
+import { AUDIO_EDITIONS, usePreferences } from "../contexts/PreferencesContext";
 import { useTranslation } from "../hooks/useTranslation";
 
 function SurahReaderPage() {
@@ -217,9 +217,13 @@ function SurahReaderPage() {
     };
   }, [number, translation]);
 
-  // EveryAyah serves one MP3 file per ayah.
+  // EveryAyah serves one MP3 file per ayah for each supported reciter.
   const tracks = useMemo(() => {
     if (!surah) return [];
+
+    const selectedEdition =
+      AUDIO_EDITIONS.find((edition) => edition.id === audioEdition) ??
+      AUDIO_EDITIONS[0];
 
     return surah.ayahs.map((ayah) => {
       const surahNumber = String(surah.number).padStart(3, "0");
@@ -228,13 +232,13 @@ function SurahReaderPage() {
       return {
         id: `${surah.number}:${ayah.numberInSurah}`,
         title: `${surah.englishName} · Ayah ${ayah.numberInSurah}`,
-        subtitle: "Al-Minshawy · Murattal · 128kbps",
+        subtitle: `${selectedEdition.nameEn} · ${selectedEdition.bitrate}`,
         surahNumber: surah.number,
         audioEdition,
         surahEnglishName: surah.englishName,
         surahArabicName: surah.name,
         ayahNumber: ayah.numberInSurah,
-        audioUrl: `https://everyayah.com/data/Minshawy_Murattal_128kbps/${surahNumber}${ayahNumber}.mp3`,
+        audioUrl: `https://everyayah.com/data/${selectedEdition.folder}/${surahNumber}${ayahNumber}.mp3`,
       };
     });
   }, [surah, audioEdition]);
