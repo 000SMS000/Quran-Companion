@@ -140,10 +140,19 @@ export function PreferencesProvider({ children }) {
   }, []);
 
   const setAudioEdition = useCallback((value) => {
-    if (AUDIO_EDITIONS.some((edition) => edition.id === value)) {
-      setAudioEditionState(value);
+    if (!AUDIO_EDITIONS.some((edition) => edition.id === value)) {
+      return;
     }
-  }, []);
+
+    if (value === audioEdition) {
+      return;
+    }
+
+    // Persist the new reciter before reloading so it survives the refresh.
+    writeStorage(AUDIO_EDITION_STORAGE_KEY, value);
+    setAudioEditionState(value);
+    window.location.reload();
+  }, [audioEdition]);
 
   useEffect(() => {
     document.documentElement.lang = language;
