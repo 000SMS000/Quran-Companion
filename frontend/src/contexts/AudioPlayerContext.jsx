@@ -87,6 +87,22 @@ export function AudioPlayerProvider({ children }) {
     }
   }, []);
 
+  const clearQueue = useCallback(() => {
+    queueRef.current = [];
+    currentIndexRef.current = -1;
+    activeTrackIdRef.current = null;
+    playbackIntentRef.current = false;
+    playbackStateRef.current = 'idle';
+
+    setQueue([]);
+    setCurrentIndex(-1);
+    setPlaybackTrackId(null);
+    setPlaybackIntent(false);
+    setPlaybackState('idle');
+    setPlaybackRequestId((requestId) => requestId + 1);
+    setPlaybackRequestedAt(performance.now());
+  }, []);
+
   const setTrackPlaybackState = useCallback((trackId, nextState) => {
     if (activeTrackIdRef.current !== trackId) {
       return;
@@ -160,6 +176,7 @@ export function AudioPlayerProvider({ children }) {
       canPlayNext: currentIndex >= 0 && currentIndex < queue.length - 1,
       canPlayPrevious: currentIndex > 0,
       playQueue,
+      clearQueue,
       playNext,
       playPrevious,
       retryQueueSync,
@@ -177,6 +194,7 @@ export function AudioPlayerProvider({ children }) {
       playbackRequestedAt,
       queueSyncError,
       playQueue,
+      clearQueue,
       playNext,
       playPrevious,
       retryQueueSync,
