@@ -1,4 +1,5 @@
 import { Settings } from "lucide-react";
+import { AUDIO_EDITIONS } from "../contexts/PreferencesContext";
 import { usePreferences } from "../contexts/PreferencesContext";
 import { useTranslation } from "../hooks/useTranslation";
 
@@ -8,6 +9,8 @@ function SettingsPage() {
     setLanguage,
     theme,
     setTheme,
+    audioEdition,
+    setAudioEdition,
   } = usePreferences();
   const { t } = useTranslation();
 
@@ -99,16 +102,23 @@ function SettingsPage() {
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
             {t("settings.audioDescription")}
           </p>
-          <div className="mt-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:bg-emerald-900/20 dark:text-emerald-100">
-            <p className="font-semibold">
-              {language === "ar"
-                ? "الشيخ محمد صديق المنشاوي — مرتل"
-                : "Mohamed Siddiq El-Minshawy — Murattal"}
-            </p>
-            <p className="mt-1">
-              {language === "ar" ? "جودة 128 كيلوبت/ثانية" : "128kbps"}
-            </p>
-          </div>
+          <label className="mt-4 block">
+            <span className="sr-only">{t("settings.audio")}</span>
+            <select
+              value={audioEdition}
+              onChange={(event) => setAudioEdition(event.target.value)}
+              className="w-full rounded-md border border-slate-200 bg-white px-3 py-3 text-slate-900 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/10 dark:border-white/10 dark:bg-slate-900 dark:text-white"
+            >
+              {AUDIO_EDITIONS.map((edition) => (
+                <option key={edition.id} value={edition.id}>
+                  {language === "ar" ? edition.nameAr : edition.nameEn} · {edition.bitrate}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="mt-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:bg-emerald-900/20 dark:text-emerald-100">
+            {language === "ar" ? "يُحفظ اختيار القارئ تلقائيًا على هذا الجهاز." : "Your reciter choice is saved automatically on this device."}
+          </p>
         </section>
       </div>
     </main>
