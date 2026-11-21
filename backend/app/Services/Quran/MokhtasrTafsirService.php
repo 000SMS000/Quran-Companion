@@ -191,6 +191,11 @@ class MokhtasrTafsirService
 
         // Keep word boundaries when adjacent inline HTML elements separate words.
         $text = preg_replace(
+            '/(?<=\S)(<(?:span|strong|em|b|i|a|mark|small|sup|sub)\b)/iu',
+            ' $1',
+            $text,
+        ) ?? $text;
+        $text = preg_replace(
             '/<\/(?:span|strong|em|b|i|a|mark|small|sup|sub)\s*>(?=\S)/iu',
             '$0 ',
             $text,
