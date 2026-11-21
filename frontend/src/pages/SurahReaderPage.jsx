@@ -24,7 +24,6 @@ function SurahReaderPage() {
 
   const {
     currentTrack,
-    currentIndex,
     playbackIntent,
     playbackState,
     playbackTrackId,
