@@ -148,10 +148,9 @@ export function PreferencesProvider({ children }) {
       return;
     }
 
-    // Persist the new reciter before reloading so it survives the refresh.
+    // Persist the new reciter and let the reader clear the previous audio queue.
     writeStorage(AUDIO_EDITION_STORAGE_KEY, value);
     setAudioEditionState(value);
-    window.location.reload();
   }, [audioEdition]);
 
   useEffect(() => {
