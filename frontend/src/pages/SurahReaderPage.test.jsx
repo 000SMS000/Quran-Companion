@@ -202,7 +202,7 @@ describe("SurahReaderPage audio controls", () => {
     await act(async () => fireEvent.click(screen.getAllByText("AYAH_ONE")[0]));
     fireEvent.click(screen.getByRole("button", { name: "Play verse 1" }));
     await screen.findByRole("button", { name: "Pause verse audio" });
-    fireEvent.click(screen.getByRole("button", { name: "Pause verse audio" });
+    fireEvent.click(screen.getByRole("button", { name: "Pause verse audio" }));
 
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Play verse 1" })).toBeTruthy(),
