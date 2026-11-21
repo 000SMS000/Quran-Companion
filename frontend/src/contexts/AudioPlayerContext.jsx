@@ -6,12 +6,10 @@ import {
   useRef,
   useState,
 } from 'react';
-import { usePreferences } from './PreferencesContext';
 
 const AudioPlayerContext = createContext(null);
 
 export function AudioPlayerProvider({ children }) {
-  const { audioEdition } = usePreferences();
   const [queue, setQueue] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [playbackState, setPlaybackState] = useState('idle');
