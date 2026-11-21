@@ -653,7 +653,8 @@ function SurahReaderPage() {
                               const range = book.range;
                               const isCoveredByEarlierAyah =
                                 range?.isShared &&
-                                selectedAyah > Number(range.startAyah);
+                                selectedAyah > Number(range.startAyah) &&
+                                selectedAyah <= Number(range.endAyah);
 
                               if (isCoveredByEarlierAyah) {
                                 return (
