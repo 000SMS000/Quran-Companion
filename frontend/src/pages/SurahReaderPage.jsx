@@ -9,7 +9,7 @@ import {
   Pause,
   Play,
 } from "lucide-react";
-import { getEditions, getSurah, getSurahAudio } from "../api/quranApi";
+import { getAyahTafsir, getEditions, getSurah, getSurahAudio } from "../api/quranApi";
 import { getBookmarks, saveBookmark, deleteBookmark } from "../api/bookmarkApi";
 import ErrorState from "../components/ErrorState";
 import LoadingState from "../components/LoadingState";
@@ -62,6 +62,12 @@ function SurahReaderPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedAyah, setSelectedAyah] = useState(null);
+  const [tafsirData, setTafsirData] = useState(null);
+  const [tafsirLoading, setTafsirLoading] = useState(false);
+  const [tafsirError, setTafsirError] = useState(false);
+  const [tafsirRetry, setTafsirRetry] = useState(0);
+  const tafsirCacheRef = useRef(new Map());
+  const tafsirRequestIdRef = useRef(0);
 
   const [bookmarks, setBookmarks] = useState([]);
   const [bookmarkActionKey, setBookmarkActionKey] = useState(null);
@@ -110,6 +116,61 @@ function SurahReaderPage() {
       setSelectedAyah(ayahFromUrl);
     }
   }, [surah?.number, ayahFromUrl, hasAyahFromUrl]);
+
+  // Load tafsir only for the selected ayah; keep responses cached for this page.
+  useEffect(() => {
+    if (!selectedAyah) {
+      tafsirRequestIdRef.current += 1;
+      setTafsirData(null);
+      setTafsirLoading(false);
+      setTafsirError(false);
+      return undefined;
+    }
+
+    const cacheKey = `${number}:${selectedAyah}`;
+    const cachedTafsir = tafsirCacheRef.current.get(cacheKey);
+
+    if (cachedTafsir) {
+      setTafsirData(cachedTafsir);
+      setTafsirLoading(false);
+      setTafsirError(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const requestId = ++tafsirRequestIdRef.current;
+
+    setTafsirData(null);
+    setTafsirLoading(true);
+    setTafsirError(false);
+
+    getAyahTafsir(number, selectedAyah)
+      .then((data) => {
+        if (cancelled || requestId !== tafsirRequestIdRef.current) {
+          return;
+        }
+
+        tafsirCacheRef.current.set(cacheKey, data);
+        setTafsirData(data);
+      })
+      .catch((exception) => {
+        if (cancelled || requestId !== tafsirRequestIdRef.current) {
+          return;
+        }
+
+        console.error("Could not load ayah tafsir:", exception);
+        setTafsirError(true);
+      })
+      .finally(() => {
+        if (!cancelled && requestId === tafsirRequestIdRef.current) {
+          setTafsirLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [number, selectedAyah, tafsirRetry]);
 
   // Scroll automatically to the selected ayah.
   useEffect(() => {
@@ -299,33 +360,35 @@ function SurahReaderPage() {
             </div>
 
             <div className="mt-6 grid gap-4 md:grid-cols-2">
-              {/* Translation */}
-              <label className="block">
-                <span className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-300">
-                  <Languages className="h-4 w-4" />
-                  {t("reader.translation")}
-                </span>
+              {/* English translation selector */}
+              {language === "en" && (
+                <label className="block">
+                  <span className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-300">
+                    <Languages className="h-4 w-4" />
+                    {t("reader.translation")}
+                  </span>
 
-                <select
-                  value={translation}
-                  onChange={(event) => setTranslation(event.target.value)}
-                  className="w-full rounded-md border border-slate-200 bg-white px-3 py-3 text-slate-900 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/10 dark:border-white/10 dark:bg-slate-900 dark:text-white"
-                >
-                  <option value="en.sahih">Saheeh International</option>
+                  <select
+                    value={translation}
+                    onChange={(event) => setTranslation(event.target.value)}
+                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-3 text-slate-900 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/10 dark:border-white/10 dark:bg-slate-900 dark:text-white"
+                  >
+                    <option value="en.sahih">Saheeh International</option>
 
-                  {editions
-                    .filter((edition) => edition.identifier !== "en.sahih")
-                    .slice(0, 20)
-                    .map((edition) => (
-                      <option
-                        key={edition.identifier}
-                        value={edition.identifier}
-                      >
-                        {edition.englishName || edition.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
+                    {editions
+                      .filter((edition) => edition.identifier !== "en.sahih")
+                      .slice(0, 20)
+                      .map((edition) => (
+                        <option
+                          key={edition.identifier}
+                          value={edition.identifier}
+                        >
+                          {edition.englishName || edition.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              )}
 
               {/* Font Size */}
               <label className="block">
@@ -419,8 +482,8 @@ function SurahReaderPage() {
                     {/* Translation && save */}
 
                     {isSelected && (
-                      <span
-                        dir="ltr"
+                      <div
+                        dir={language === "ar" ? "rtl" : "ltr"}
                         className="my-5 flex items-start gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-start font-sans text-base leading-8 text-slate-600 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-300"
                       >
                         <span className="flex shrink-0 flex-col gap-2">
@@ -542,10 +605,69 @@ function SurahReaderPage() {
                           })()}
                         </span>
 
-                        {ayah.translation?.text && (
-                          <span className="flex-1">{ayah.translation.text}</span>
-                        )}
-                      </span>
+                        <div className="min-w-0 flex-1 space-y-4">
+                          {language === "en" && ayah.translation?.text && (
+                            <section>
+                              <h3 className="mb-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                                {t("reader.translation")}
+                              </h3>
+                              <p>{ayah.translation.text}</p>
+                            </section>
+                          )}
+
+                          <section>
+                            <h3 className="mb-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                              {t("reader.tafsir")}
+                            </h3>
+
+                            {tafsirLoading && (
+                              <p className="flex items-center gap-2 text-sm" role="status">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                {t("reader.tafsirLoading")}
+                              </p>
+                            )}
+
+                            {tafsirError && (
+                              <div className="flex flex-wrap items-center gap-3 text-sm" role="alert">
+                                <span>{t("reader.tafsirError")}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setTafsirRetry((value) => value + 1)}
+                                  className="font-semibold text-emerald-700 underline underline-offset-2 hover:text-emerald-900 dark:text-emerald-300 dark:hover:text-emerald-100"
+                                >
+                                  {t("common.tryAgain")}
+                                </button>
+                              </div>
+                            )}
+
+                            {!tafsirLoading && !tafsirError && tafsirData && (() => {
+                              const languageId = language === "ar" ? 1 : 4;
+                              const book = tafsirData.books?.find(
+                                (item) => Number(item.language_id) === languageId,
+                              );
+
+                              if (!book) {
+                                return <p>{t("reader.tafsirUnavailable")}</p>;
+                              }
+
+                              const range = book.range;
+                              const isCoveredByEarlierAyah =
+                                range?.isShared &&
+                                selectedAyah > Number(range.startAyah);
+
+                              if (isCoveredByEarlierAyah) {
+                                return (
+                                  <p>{t("reader.tafsirIncludedInAyah", {
+                                    number: range.startAyah,
+                                  })}</p>
+                                );
+                              }
+
+                              return <p className="whitespace-pre-line">{book.plain_text || book.text}</p>;
+                            })()}
+                          </section>
+                        </div>
+                      </div>
                     )}
                   </span>
                 );
