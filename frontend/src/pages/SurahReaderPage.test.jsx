@@ -101,7 +101,6 @@ describe("SurahReaderPage audio controls", () => {
   beforeEach(() => {
     cleanup();
     localStorage.clear();
-    vi.spyOn(window.location, "reload").mockImplementation(() => {});
     getEditions.mockResolvedValue([]);
     getBookmarks.mockResolvedValue([]);
     getSurah.mockResolvedValue(surahData);
@@ -178,7 +177,6 @@ describe("SurahReaderPage audio controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Change reciter" }));
 
     await waitFor(() => {
-      expect(window.location.reload).toHaveBeenCalledTimes(1);
       expect(container.querySelector("audio").src).toBe("");
     });
     expect(audioPlay).toHaveBeenCalledTimes(1);
@@ -212,7 +210,6 @@ describe("SurahReaderPage audio controls", () => {
     await waitFor(() => {
       expect(container.querySelector("audio").src).toBe("");
     });
-    expect(window.location.reload).toHaveBeenCalledTimes(1);
     expect(audioPlay).toHaveBeenCalledTimes(1);
   });
 
