@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\Quran\MokhtasrTafsirService;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use RuntimeException;
 
 class TafsirController extends Controller
@@ -15,7 +15,7 @@ class TafsirController extends Controller
     ) {
     }
 
-    public function ayah(Request $request, int $surah, int $ayah): JsonResponse
+    public function ayah(int $surah, int $ayah): JsonResponse
     {
         if ($surah < 1 || $surah > 114) {
             return response()->json([
@@ -38,6 +38,11 @@ class TafsirController extends Controller
                 'success' => true,
                 'data' => $this->tafsir->getAyahTafsir($surah, $ayah),
             ]);
+        } catch (ConnectionException) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tafsir service is temporarily unavailable. Please try again.',
+            ], 504);
         } catch (RuntimeException $exception) {
             $status = $exception->getCode();
 
