@@ -61,6 +61,7 @@ export function AudioPlayerProvider({ children }) {
 
     if (
       isSameActiveTrack &&
+      !queueChanged &&
       (playbackStateRef.current === 'loading' ||
         playbackStateRef.current === 'playing') &&
       playbackIntentRef.current
