@@ -12,7 +12,72 @@ const PreferencesContext = createContext(null);
 const LANGUAGE_STORAGE_KEY = "quran_companion_language";
 const THEME_STORAGE_KEY = "quran_companion_theme";
 const AUDIO_EDITION_STORAGE_KEY = "quran_companion_audio_edition";
-const EVERYAYAH_AUDIO_EDITION = "everyayah.minshawy.murattal.128";
+export const AUDIO_EDITIONS = [
+  {
+    "id": "everyayah.minshawy.murattal.128",
+    "folder": "Minshawy_Murattal_128kbps",
+    "nameAr": "محمد صديق المنشاوي — مرتل",
+    "nameEn": "Mohamed Siddiq Al-Minshawy — Murattal",
+    "bitrate": "128kbps"
+  },
+  {
+    "id": "everyayah.alafasy.128",
+    "folder": "Alafasy_128kbps",
+    "nameAr": "مشاري العفاسي — مرتل",
+    "nameEn": "Mishary Rashid Alafasy — Murattal",
+    "bitrate": "128kbps"
+  },
+  {
+    "id": "everyayah.husary.128",
+    "folder": "Husary_128kbps",
+    "nameAr": "محمود خليل الحصري — مرتل",
+    "nameEn": "Mahmoud Khalil Al-Husary — Murattal",
+    "bitrate": "128kbps"
+  },
+  {
+    "id": "everyayah.hudhaify.128",
+    "folder": "Hudhaify_128kbps",
+    "nameAr": "علي الحذيفي — مرتل",
+    "nameEn": "Ali Al-Hudhaify — Murattal",
+    "bitrate": "128kbps"
+  },
+  {
+    "id": "everyayah.maher.128",
+    "folder": "Maher_AlMuaiqly_128kbps",
+    "nameAr": "ماهر المعيقلي — مرتل",
+    "nameEn": "Maher Al-Muaiqly — Murattal",
+    "bitrate": "128kbps"
+  },
+  {
+    "id": "everyayah.sudais.192",
+    "folder": "Abdurrahmaan_As-Sudais_192kbps",
+    "nameAr": "عبدالرحمن السديس — مرتل",
+    "nameEn": "Abdurrahmaan As-Sudais — Murattal",
+    "bitrate": "192kbps"
+  },
+  {
+    "id": "everyayah.shuraim.128",
+    "folder": "Saood_ash-Shuraym_128kbps",
+    "nameAr": "سعود الشريم — مرتل",
+    "nameEn": "Saood Ash-Shuraym — Murattal",
+    "bitrate": "128kbps"
+  },
+  {
+    "id": "everyayah.yasser.128",
+    "folder": "Yasser_Ad-Dussary_128kbps",
+    "nameAr": "ياسر الدوسري — مرتل",
+    "nameEn": "Yasser Ad-Dussary — Murattal",
+    "bitrate": "128kbps"
+  },
+  {
+    "id": "everyayah.nasser.128",
+    "folder": "Nasser_Alqatami_128kbps",
+    "nameAr": "ناصر القطامي — مرتل",
+    "nameEn": "Nasser Al-Qatami — Murattal",
+    "bitrate": "128kbps"
+  }
+];
+export const DEFAULT_AUDIO_EDITION = AUDIO_EDITIONS[0].id;
 
 function readStorage(key) {
   try {
@@ -54,7 +119,13 @@ export function PreferencesProvider({ children }) {
     getStoredValue(LANGUAGE_STORAGE_KEY, "en", ["ar", "en"]),
   );
   const [theme, setThemeState] = useState(getInitialTheme);
-  const [audioEdition, setAudioEditionState] = useState(EVERYAYAH_AUDIO_EDITION);
+  const [audioEdition, setAudioEditionState] = useState(() =>
+    getStoredValue(
+      AUDIO_EDITION_STORAGE_KEY,
+      DEFAULT_AUDIO_EDITION,
+      AUDIO_EDITIONS.map((edition) => edition.id),
+    ),
+  );
 
   const setLanguage = useCallback((value) => {
     if (value === "ar" || value === "en") {
@@ -69,8 +140,8 @@ export function PreferencesProvider({ children }) {
   }, []);
 
   const setAudioEdition = useCallback((value) => {
-    if (value === EVERYAYAH_AUDIO_EDITION) {
-      setAudioEditionState(EVERYAYAH_AUDIO_EDITION);
+    if (AUDIO_EDITIONS.some((edition) => edition.id === value)) {
+      setAudioEditionState(value);
     }
   }, []);
 
