@@ -32,7 +32,7 @@ export function AudioPlayerProvider({ children }) {
 
   const currentTrack = currentIndex >= 0 ? queue[currentIndex] : null;
 
-  const playQueue = useCallback((tracks, index = 0) => {
+  const playQueue = useCallback((tracks, index = 0, shouldPlay = true) => {
     const playableTracks = tracks.filter((track) => track.audioUrl);
     const target = tracks[index];
     const playableIndex = playableTracks.findIndex(
@@ -71,7 +71,7 @@ export function AudioPlayerProvider({ children }) {
 
     activeTrackIdRef.current = selectedTrack?.id ?? null;
     setPlaybackTrackId(selectedTrack?.id ?? null);
-    playbackIntentRef.current = Boolean(selectedTrack);
+    playbackIntentRef.current = Boolean(selectedTrack) && shouldPlay;
     setPlaybackIntent(playbackIntentRef.current);
     playbackStateRef.current = selectedTrack ? 'loading' : 'idle';
     setPlaybackState(playbackStateRef.current);
