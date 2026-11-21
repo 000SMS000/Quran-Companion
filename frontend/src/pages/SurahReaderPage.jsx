@@ -9,34 +9,13 @@ import {
   Pause,
   Play,
 } from "lucide-react";
-import { getAyahTafsir, getEditions, getSurah, getSurahAudio } from "../api/quranApi";
+import { getAyahTafsir, getEditions, getSurah } from "../api/quranApi";
 import { getBookmarks, saveBookmark, deleteBookmark } from "../api/bookmarkApi";
 import ErrorState from "../components/ErrorState";
 import LoadingState from "../components/LoadingState";
 import { useAudioPlayer } from "../contexts/AudioPlayerContext";
 import { usePreferences } from "../contexts/PreferencesContext";
 import { useTranslation } from "../hooks/useTranslation";
-
-function withAudioEdition(surah, audioData) {
-  const audioByAyah = new Map(
-    audioData.ayahs.map((ayah) => [
-      ayah.numberInSurah,
-      ayah.audio,
-    ]),
-  );
-
-  return {
-    ...surah,
-    audioEdition: audioData.edition,
-    ayahs: surah.ayahs.map((ayah) => ({
-      ...ayah,
-      audio: audioByAyah.get(ayah.numberInSurah) ?? {
-        url: null,
-        secondary: [],
-      },
-    })),
-  };
-}
 
 function SurahReaderPage() {
   const { number } = useParams();
@@ -72,10 +51,6 @@ function SurahReaderPage() {
   const [bookmarks, setBookmarks] = useState([]);
   const [bookmarkActionKey, setBookmarkActionKey] = useState(null);
   const [bookmarkError, setBookmarkError] = useState("");
-  const audioEditionRef = useRef(audioEdition);
-  const previousAudioEditionRef = useRef(audioEdition);
-  audioEditionRef.current = audioEdition;
-
   useEffect(() => {
     let cancelled = false;
 
@@ -201,31 +176,16 @@ function SurahReaderPage() {
       .catch(() => setEditions([]));
   }, []);
 
-  // Load the selected Surah.
+  // Load Quran text and translation from AlQuran Cloud.
   useEffect(() => {
     let cancelled = false;
-    const requestedEdition = audioEditionRef.current;
 
     setLoading(true);
     setError("");
 
-    getSurah(number, { translation, audio: requestedEdition })
+    getSurah(number, { translation })
       .then((data) => {
-        if (cancelled) {
-          return;
-        }
-
-        if (audioEditionRef.current === requestedEdition) {
-          setSurah(data);
-          return;
-        }
-
-        const latestEdition = audioEditionRef.current;
-        return getSurahAudio(number, latestEdition).then((audioData) => {
-          if (!cancelled && audioEditionRef.current === latestEdition) {
-            setSurah(withAudioEdition(data, audioData));
-          }
-        });
+        if (!cancelled) setSurah(data);
       })
       .catch((exception) => {
         if (!cancelled) {
@@ -234,9 +194,7 @@ function SurahReaderPage() {
         }
       })
       .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       });
 
     return () => {
@@ -244,56 +202,27 @@ function SurahReaderPage() {
     };
   }, [number, translation]);
 
-  useEffect(() => {
-    if (previousAudioEditionRef.current === audioEdition) {
-      return undefined;
-    }
-
-    previousAudioEditionRef.current = audioEdition;
-    const surahNumber = Number(number);
-    let cancelled = false;
-
-    getSurahAudio(surahNumber, audioEdition)
-      .then((audioData) => {
-        if (cancelled || audioEditionRef.current !== audioEdition) {
-          return;
-        }
-
-        setSurah((currentSurah) =>
-          currentSurah?.number === surahNumber
-            ? withAudioEdition(currentSurah, audioData)
-            : currentSurah,
-        );
-      })
-      .catch((exception) => {
-        if (!cancelled) {
-          console.error("Could not load selected reciter audio:", exception);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [audioEdition, number]);
-
-  // Build audio tracks for all ayahs.
+  // EveryAyah serves one MP3 file per ayah.
   const tracks = useMemo(() => {
-    if (!surah) {
-      return [];
-    }
+    if (!surah) return [];
 
-    return surah.ayahs.map((ayah) => ({
-      id: `${surah.number}:${ayah.numberInSurah}`,
-      title: `${surah.englishName} · Ayah ${ayah.numberInSurah}`,
-      subtitle: surah.audioEdition?.englishName,
-      surahNumber: surah.number,
-      audioEdition: surah.audioEdition?.identifier,
-      surahEnglishName: surah.englishName,
-      surahArabicName: surah.name,
-      ayahNumber: ayah.numberInSurah,
-      audioUrl: ayah.audio?.url,
-    }));
-  }, [surah]);
+    return surah.ayahs.map((ayah) => {
+      const surahNumber = String(surah.number).padStart(3, "0");
+      const ayahNumber = String(ayah.numberInSurah).padStart(3, "0");
+
+      return {
+        id: `${surah.number}:${ayah.numberInSurah}`,
+        title: `${surah.englishName} · Ayah ${ayah.numberInSurah}`,
+        subtitle: "Al-Minshawy · Murattal · 128kbps",
+        surahNumber: surah.number,
+        audioEdition,
+        surahEnglishName: surah.englishName,
+        surahArabicName: surah.name,
+        ayahNumber: ayah.numberInSurah,
+        audioUrl: `https://everyayah.com/data/Minshawy_Murattal_128kbps/${surahNumber}${ayahNumber}.mp3`,
+      };
+    });
+  }, [surah, audioEdition]);
 
   function handleAyahClick(ayahNumber) {
     setSelectedAyah((current) => (current === ayahNumber ? null : ayahNumber));
