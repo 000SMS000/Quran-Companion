@@ -24,6 +24,8 @@ function SurahReaderPage() {
 
   const {
     currentTrack,
+    currentIndex,
+    playbackIntent,
     playbackState,
     playbackTrackId,
     playQueue,
@@ -242,6 +244,36 @@ function SurahReaderPage() {
       };
     });
   }, [surah, audioEdition]);
+
+  // When the user changes reciter, refresh the active queue with the
+  // matching EveryAyah URLs while preserving whether playback was active.
+  useEffect(() => {
+    if (
+      !surah ||
+      !currentTrack ||
+      Number(currentTrack.surahNumber) !== surah.number ||
+      currentTrack.audioEdition === audioEdition
+    ) {
+      return;
+    }
+
+    const activeIndex = tracks.findIndex(
+      (track) => track.id === currentTrack.id,
+    );
+
+    if (activeIndex >= 0) {
+      playQueue(tracks, activeIndex, playbackIntent);
+    }
+  }, [
+    surah?.number,
+    tracks,
+    currentTrack?.id,
+    currentTrack?.surahNumber,
+    currentTrack?.audioEdition,
+    audioEdition,
+    playbackIntent,
+    playQueue,
+  ]);
 
   function handleAyahClick(ayahNumber) {
     setSelectedAyah((current) => (current === ayahNumber ? null : ayahNumber));
