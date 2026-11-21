@@ -97,8 +97,20 @@ function AudioPlayer() {
   useEffect(() => {
     const audio = audioRef.current;
 
-    if (!audio || !currentTrack?.audioUrl) {
+    if (!audio) {
+      return;
+    }
+
+    if (!currentTrack?.audioUrl) {
+      generationRef.current += 1;
+      playAttemptRef.current += 1;
       shouldAutoplayRef.current = false;
+      playRequestedRef.current = false;
+      hasPlayedRef.current = false;
+      audioErrorRef.current = false;
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
       setProgress(0);
       setDuration(0);
       return;
