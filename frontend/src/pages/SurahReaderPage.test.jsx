@@ -182,7 +182,6 @@ describe("SurahReaderPage audio controls", () => {
     expect(audioPlay).toHaveBeenCalledTimes(1);
     expect(getSurah).toHaveBeenCalledTimes(1);
 
-    await act(async () => fireEvent.click(screen.getByText("AYAH_ONE")));
     fireEvent.click(screen.getByRole("button", { name: "Play verse 1" }));
 
     expect(
