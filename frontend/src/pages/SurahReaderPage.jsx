@@ -24,10 +24,10 @@ function SurahReaderPage() {
 
   const {
     currentTrack,
-    playbackIntent,
     playbackState,
     playbackTrackId,
     playQueue,
+    clearQueue,
     queueSyncError,
     retryQueueSync,
     setTrackPlaybackState,
@@ -244,35 +244,18 @@ function SurahReaderPage() {
     });
   }, [surah, audioEdition]);
 
-  // When the user changes reciter, refresh the active queue with the
-  // matching EveryAyah URLs while preserving whether playback was active.
+  // Changing the reciter stops and clears the old audio queue.
+  // The user must explicitly choose an ayah and press play again.
+  const previousAudioEditionRef = useRef(audioEdition);
+
   useEffect(() => {
-    if (
-      !surah ||
-      !currentTrack ||
-      Number(currentTrack.surahNumber) !== surah.number ||
-      currentTrack.audioEdition === audioEdition
-    ) {
+    if (previousAudioEditionRef.current === audioEdition) {
       return;
     }
 
-    const activeIndex = tracks.findIndex(
-      (track) => track.id === currentTrack.id,
-    );
-
-    if (activeIndex >= 0) {
-      playQueue(tracks, activeIndex, playbackIntent);
-    }
-  }, [
-    surah?.number,
-    tracks,
-    currentTrack?.id,
-    currentTrack?.surahNumber,
-    currentTrack?.audioEdition,
-    audioEdition,
-    playbackIntent,
-    playQueue,
-  ]);
+    previousAudioEditionRef.current = audioEdition;
+    clearQueue();
+  }, [audioEdition, clearQueue]);
 
   function handleAyahClick(ayahNumber) {
     setSelectedAyah((current) => (current === ayahNumber ? null : ayahNumber));
