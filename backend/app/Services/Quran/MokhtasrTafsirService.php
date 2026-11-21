@@ -15,16 +15,45 @@ class MokhtasrTafsirService
 
     public function getAyahTafsir(int $surah, int $ayah): array
     {
-        $cacheKey = sprintf('mokhtasr.tafsir.v1.%d.%d', $surah, $ayah);
+        $bookIds = config('mokhtasr.books', ['ar' => 200, 'en' => 319]);
+        $missingLanguages = [];
 
-        return Cache::remember(
-            $cacheKey,
-            now()->addDays(max(1, (int) config('mokhtasr.cache_days', 7))),
-            fn () => $this->fetchAyahTafsir($surah, $ayah),
-        );
+        foreach ($bookIds as $language => $bookId) {
+            $unitKey = Cache::get($this->ayahLookupKey($surah, $ayah, (string) $language));
+
+            if (!is_string($unitKey) || !Cache::has($unitKey)) {
+                $missingLanguages[] = (string) $language;
+            }
+        }
+
+        if ($missingLanguages !== []) {
+            $this->fetchAndCacheBooks($surah, $ayah, $missingLanguages);
+        }
+
+        $books = [];
+
+        foreach ($bookIds as $language => $bookId) {
+            $unitKey = Cache::get($this->ayahLookupKey($surah, $ayah, (string) $language));
+            $book = is_string($unitKey) ? Cache::get($unitKey) : null;
+
+            if (!is_array($book)) {
+                throw new RuntimeException(
+                    sprintf('Mokhtasr tafsir is unavailable for language "%s".', $language),
+                    502,
+                );
+            }
+
+            $books[] = $book;
+        }
+
+        return [
+            'surah' => $surah,
+            'requestedAyah' => $ayah,
+            'books' => $books,
+        ];
     }
 
-    protected function fetchAyahTafsir(int $surah, int $ayah): array
+    protected function fetchAndCacheBooks(int $surah, int $ayah, array $languages): void
     {
         $token = (string) config('mokhtasr.token');
 
@@ -35,15 +64,27 @@ class MokhtasrTafsirService
             );
         }
 
-        $books = config('mokhtasr.books', ['ar' => 200, 'en' => 319]);
+        $allBookIds = config('mokhtasr.books', ['ar' => 200, 'en' => 319]);
+        $requestedBookIds = [];
+
+        foreach ($languages as $language) {
+            if (isset($allBookIds[$language])) {
+                $requestedBookIds[$language] = (int) $allBookIds[$language];
+            }
+        }
+
+        if ($requestedBookIds === []) {
+            throw new RuntimeException('No Mokhtasr books were configured for this request.', 503);
+        }
 
         $response = $this->http
             ->baseUrl(rtrim((string) config('mokhtasr.base_url'), '/'))
             ->acceptJson()
             ->withToken($token)
-            ->timeout((int) config('mokhtasr.timeout', 15))
+            ->connectTimeout((int) config('mokhtasr.connect_timeout', 10))
+            ->timeout((int) config('mokhtasr.timeout', 30))
             ->get('/book-contents', [
-                'books' => implode(',', array_values($books)),
+                'books' => implode(',', array_values($requestedBookIds)),
                 'sura' => $surah,
                 'aya' => $ayah,
                 'lang' => 'ar',
@@ -65,8 +106,7 @@ class MokhtasrTafsirService
             );
         }
 
-        $content = $payload['data'][0];
-        $sourceBooks = $content['books'] ?? [];
+        $sourceBooks = $payload['data'][0]['books'] ?? [];
 
         if (!is_array($sourceBooks)) {
             throw new RuntimeException(
@@ -75,14 +115,58 @@ class MokhtasrTafsirService
             );
         }
 
-        return [
-            'surah' => $surah,
-            'requestedAyah' => $ayah,
-            'books' => array_values(array_map(
-                fn (array $book) => $this->normalizeBook($book, $ayah),
-                array_filter($sourceBooks, 'is_array'),
-            )),
-        ];
+        $languageIds = config('mokhtasr.language_ids', ['ar' => 1, 'en' => 4]);
+        $receivedLanguages = [];
+
+        foreach ($sourceBooks as $sourceBook) {
+            if (!is_array($sourceBook)) {
+                continue;
+            }
+
+            $language = array_search(
+                (int) ($sourceBook['language_id'] ?? 0),
+                array_map('intval', $languageIds),
+                true,
+            );
+
+            if (!is_string($language) || !isset($requestedBookIds[$language])) {
+                continue;
+            }
+
+            $book = $this->normalizeBook($sourceBook, $ayah);
+            $range = $book['range'];
+            $bookId = $requestedBookIds[$language];
+
+            $unitKey = $this->unitCacheKey(
+                $surah,
+                $language,
+                $bookId,
+                $range['startAyah'],
+                $range['endAyah'],
+            );
+
+            $expiresAt = now()->addDays(max(1, (int) config('mokhtasr.cache_days', 7)));
+            Cache::put($unitKey, $book, $expiresAt);
+
+            for ($rangeAyah = $range['startAyah']; $rangeAyah <= $range['endAyah']; $rangeAyah++) {
+                Cache::put(
+                    $this->ayahLookupKey($surah, $rangeAyah, $language),
+                    $unitKey,
+                    $expiresAt,
+                );
+            }
+
+            $receivedLanguages[] = $language;
+        }
+
+        $missingResponses = array_diff(array_keys($requestedBookIds), $receivedLanguages);
+
+        if ($missingResponses !== []) {
+            throw new RuntimeException(
+                'Mokhtasr did not return all requested tafsir books.',
+                502,
+            );
+        }
     }
 
     protected function normalizeBook(array $book, int $requestedAyah): array
@@ -91,7 +175,7 @@ class MokhtasrTafsirService
         $plainText = $this->plainText($text);
         $range = $this->extractAyahRange($plainText, $requestedAyah);
         $displayText = $range['isShared']
-            ? (preg_replace('/^\\s*\\d+\\s*[-–—]\\s*\\d+\\s*[-–—]\\s*/u', '', $plainText) ?? $plainText)
+            ? (preg_replace('/^\s*\d+\s*[-–—]\s*\d+\s*[-–—]\s*/u', '', $plainText) ?? $plainText)
             : $plainText;
 
         return [
@@ -103,17 +187,21 @@ class MokhtasrTafsirService
 
     protected function plainText(string $text): string
     {
-        $text = preg_replace('/<br\\s*\\/?\\s*>/iu', "\n", $text) ?? $text;
-        $text = html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = preg_replace('/<br\s*\/?\s*>/iu', "\n", $text) ?? $text;
 
-        return trim(preg_replace('/[\\t ]+/u', ' ', $text) ?? $text);
+        // Keep word boundaries when adjacent inline HTML elements separate words.
+        $text = preg_replace(
+            '/<\/(?:span|strong|em|b|i|a|mark|small|sup|sub)\s*>(?=\S)/iu',
+            '$0 ',
+            $text,
+        ) ?? $text;
+
+        $text = html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = preg_replace('/[\t ]+/u', ' ', $text) ?? $text;
+
+        return trim($text);
     }
 
-    /**
-     * Mokhtasr samples may prefix a shared explanation with "3 - 4 -".
-     * If no explicit, valid range is present, treat it as an ayah-specific
-     * explanation rather than guessing from repeated text.
-     */
     protected function extractAyahRange(string $text, int $requestedAyah): array
     {
         $digits = strtr($text, [
@@ -123,7 +211,7 @@ class MokhtasrTafsirService
             '۵' => '5', '۶' => '6', '۷' => '7', '۸' => '8', '۹' => '9',
         ]);
 
-        if (preg_match('/^\\s*(\\d+)\\s*[-–—]\\s*(\\d+)\\s*[-–—]/u', $digits, $matches)) {
+        if (preg_match('/^\s*(\d+)\s*[-–—]\s*(\d+)\s*[-–—]/u', $digits, $matches)) {
             $start = (int) $matches[1];
             $end = (int) $matches[2];
 
@@ -141,5 +229,27 @@ class MokhtasrTafsirService
             'endAyah' => $requestedAyah,
             'isShared' => false,
         ];
+    }
+
+    protected function ayahLookupKey(int $surah, int $ayah, string $language): string
+    {
+        return sprintf('mokhtasr.tafsir.lookup.v2.%d.%d.%s', $surah, $ayah, $language);
+    }
+
+    protected function unitCacheKey(
+        int $surah,
+        string $language,
+        int $bookId,
+        int $startAyah,
+        int $endAyah,
+    ): string {
+        return sprintf(
+            'mokhtasr.tafsir.unit.v2.%d.%s.%d.%d.%d',
+            $surah,
+            $language,
+            $bookId,
+            $startAyah,
+            $endAyah,
+        );
     }
 }
