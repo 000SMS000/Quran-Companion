@@ -12,6 +12,7 @@ const PreferencesContext = createContext(null);
 const LANGUAGE_STORAGE_KEY = "quran_companion_language";
 const THEME_STORAGE_KEY = "quran_companion_theme";
 const AUDIO_EDITION_STORAGE_KEY = "quran_companion_audio_edition";
+const EVERYAYAH_AUDIO_EDITION = "everyayah.minshawy.murattal.128";
 
 function readStorage(key) {
   try {
@@ -53,9 +54,7 @@ export function PreferencesProvider({ children }) {
     getStoredValue(LANGUAGE_STORAGE_KEY, "en", ["ar", "en"]),
   );
   const [theme, setThemeState] = useState(getInitialTheme);
-  const [audioEdition, setAudioEditionState] = useState(
-    () => readStorage(AUDIO_EDITION_STORAGE_KEY) || "ar.alafasy",
-  );
+  const [audioEdition, setAudioEditionState] = useState(EVERYAYAH_AUDIO_EDITION);
 
   const setLanguage = useCallback((value) => {
     if (value === "ar" || value === "en") {
@@ -70,8 +69,8 @@ export function PreferencesProvider({ children }) {
   }, []);
 
   const setAudioEdition = useCallback((value) => {
-    if (typeof value === "string" && value.trim() !== "") {
-      setAudioEditionState(value);
+    if (value === EVERYAYAH_AUDIO_EDITION) {
+      setAudioEditionState(EVERYAYAH_AUDIO_EDITION);
     }
   }, []);
 
