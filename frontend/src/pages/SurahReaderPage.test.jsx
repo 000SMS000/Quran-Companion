@@ -9,7 +9,7 @@ import {
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AudioPlayer from "../components/AudioPlayer";
-import { getEditions, getSurah } from "../api/quranApi";
+import { getAyahTafsir, getEditions, getSurah } from "../api/quranApi";
 import { getBookmarks } from "../api/bookmarkApi";
 import { AudioPlayerProvider } from "../contexts/AudioPlayerContext";
 import {
@@ -19,6 +19,7 @@ import {
 import SurahReaderPage from "./SurahReaderPage";
 
 vi.mock("../api/quranApi", () => ({
+  getAyahTafsir: vi.fn(),
   getEditions: vi.fn(),
   getSurah: vi.fn(),
 }));
@@ -101,11 +102,13 @@ describe("SurahReaderPage audio controls", () => {
   beforeEach(() => {
     cleanup();
     localStorage.clear();
+    getAyahTafsir.mockResolvedValue({ books: [] });
     getEditions.mockResolvedValue([]);
     getBookmarks.mockResolvedValue([]);
     getSurah.mockResolvedValue(surahData);
 
     HTMLElement.prototype.scrollIntoView = vi.fn();
+    HTMLMediaElement.prototype.load = vi.fn();
     audioPlay = vi.fn(function () {
       Object.defineProperty(this, "paused", {
         configurable: true,
