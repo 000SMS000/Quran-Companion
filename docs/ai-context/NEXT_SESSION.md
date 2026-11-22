@@ -1,28 +1,36 @@
 # Quran Companion — Next Session Handoff
 
-## Current stopping point
+## Current stopping point (2026-11-22)
 
-The context documents were audited against the current source on 2026-11-08 and updated to remove stale status assumptions. No application source, `.env`, database, or bookmark data was changed. The `.env` file was not opened or exposed, and no database connection was made.
+- The user selected Render for an initial deployment trial and wants to keep MySQL for now.
+- Added `backend/Dockerfile` (PHP 8.4 + Apache + pdo_mysql, dynamic Render PORT binding) and `backend/.dockerignore`.
+- Updated root `README.md` with manual Render service configuration, environment variable guidance, cookie/CORS considerations, and safe migration instructions.
+- Updated project context, current status, and decisions to record the deployment direction.
+- Changes were made on `feature/mokhtasr-tafsir-backend`. PR #1 remains open; do not merge it.
+- Docker image has not been built or run in this session. No Render service, external MySQL database, or domain has been created.
+- Do not claim deployment readiness until the Docker build and runtime checks pass.
 
-The worktree is intentionally dirty on branch `main` at `ccdfae6`. It contains uncommitted audio/player changes, the new frontend test, package/config changes, and untracked `AGENTS.md` and `docs/`. Inspect `git status` and relevant diffs before editing; do not discard or overwrite user changes.
+## Next actions
 
-## If continuing the audio-player task
-
-1. Read `PROJECT_CONTEXT.md`, `CURRENT_STATUS.md`, and `DECISIONS.md`.
-2. Inspect the current diff for `frontend/src/contexts/AudioPlayerContext.jsx`, `frontend/src/components/AudioPlayer.jsx`, `frontend/src/pages/SurahReaderPage.jsx`, tests, and package/config changes.
-3. If appropriate, rerun frontend tests/build and `git diff --check`.
-4. Browser playback under real network conditions remains unverified; frontend tests mock the media element.
-5. Backend tests previously passed with 11 tests/35 assertions, but were not rerun in the documentation audit.
+1. Ask the user to pull the latest branch and inspect the new Dockerfile and README.
+2. Build the Docker image locally from the `backend` directory:
+   `docker build -t quran-companion-api .`
+3. If the build succeeds, test it with a temporary local MySQL-compatible database/container and a safe test-only environment. Do not connect to the user's existing `quran_companion` database for this test.
+4. Choose an external managed MySQL provider that allows connections from Render and supports backups/TLS.
+5. Create Render frontend and backend services only after the Docker image works and the database provider is selected.
+6. For a brand-new empty production DB, run `php artisan migrate --force` after checking the target connection. Never use `migrate:fresh`, `db:wipe`, or destructive SQL.
 
 ## Database and secret safety
 
-- Do not read, print, or copy secrets from `backend/.env`.
-- Do not connect to, alter, migrate, reset, drop, truncate, or recreate any database for unrelated validation.
-- Preserve all existing bookmark data and the cookie-based guest-owner design.
-- `phpunit.xml` declares SQLite `:memory:` for tests, but confirm test setup if any future test could use a real environment; do not assume the runtime `.env` settings.
+- Never read, print, or commit the real `backend/.env`.
+- Never ask the user to share `APP_KEY`, database passwords, or API tokens.
+- Preserve all existing bookmark data and cookie-based guest ownership.
+- Do not change the database engine to PostgreSQL without discussing migration/data impact and receiving explicit approval.
+- Do not merge PR #1 or `main` unless explicitly requested.
 
-## Environment notes
+## Deployment-specific checks
 
-- PHP 8.5.12, Composer 2.9.8, Node.js 22.16.0, npm 11.14.1, and Laravel 13.32.0 were observed during the audit.
-- `.env.example` documents MySQL on port 3306. A refusal on port 3307 was a historical report from 2026-10-28; current runtime DB configuration/service status is unknown.
-- No deployment target is confirmed.
+- Frontend Static Site: root `frontend`, build `npm ci && npm run build`, publish `dist`, set `VITE_API_BASE_URL` to the API origin plus `/api`, and add SPA rewrite `/* -> /index.html`.
+- Backend Docker Web Service: root `backend`, Dockerfile `./Dockerfile`, health check `/api/health`.
+- Configure `APP_ENV=production`, `APP_DEBUG=false`, unique `APP_KEY`, `APP_URL`, exact `FRONTEND_URL`, MySQL connection variables, secure cookie settings, and stderr logging in Render.
+- Test guest bookmark create/read/delete, CORS credentials, tafsir, search, and audio over HTTPS.
