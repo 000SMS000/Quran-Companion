@@ -1,6 +1,6 @@
 # Quran Companion — Project Context
 
-> Last audited: 2026-11-08
+> Updated: 2026-11-22
 > Facts below were checked against this checkout. Runtime `.env` settings and live database contents were not inspected.
 
 ## 1. Project overview
@@ -43,7 +43,10 @@ Quran Companion is a web application for reading and exploring the Quran. It has
 - `backend/.env.example` documents MySQL at `127.0.0.1:3306` with database `quran_companion`. `backend/config/database.php` falls back to SQLite if `DB_CONNECTION` is absent.
 - A MySQL connection refusal at `127.0.0.1:3307` was reported on 2026-10-28. This is a historical report, not a confirmed current blocker; the active `.env`, service, port, and database were not inspected in this audit.
 - Never copy values from `.env` into documentation or chat.
-- No production hosting provider, database, domain, or deployment plan has been confirmed.
+- Initial deployment direction: Render Static Site for React/Vite and Render Docker Web Service for Laravel API.
+- The user wants to retain MySQL for now. Render's managed database offering is PostgreSQL, so an external MySQL provider remains to be selected.
+- `backend/Dockerfile` and `backend/.dockerignore` have been added for a PHP 8.4/Apache Laravel container. The root README documents manual Render configuration.
+- No Render service or production database has been created; Docker build and live deployment remain unverified.
 
 ## 6. Verification discipline
 
