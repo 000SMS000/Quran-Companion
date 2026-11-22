@@ -29,6 +29,13 @@ This file records confirmed user choices and checked implementation constraints.
 - The selected Ayah's audio controls reflect the shared `AudioPlayerContext` state. Clicking Ayah text only selects it; the control in its translation panel starts playback.
 - These behaviors are present in the current frontend source; real browser/network playback was not verified in the context audit.
 
+### 5. Initial deployment direction
+
+- The user chose Render for an initial deployment trial, with the frontend as a Static Site and Laravel API as a Docker Web Service.
+- Keep MySQL for now. Render's managed database offering is PostgreSQL, so a separate MySQL provider must be selected before deploying the API.
+- This is a deployment direction, not approval to migrate the production database or change the application's database engine.
+- Preserve guest bookmark data and do not run destructive migrations.
+
 ## Verified implementation details
 
 - Routes are owner-middleware protected for bookmark list/create/delete.
