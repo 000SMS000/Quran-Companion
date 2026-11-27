@@ -61,4 +61,5 @@ RUN composer dump-autoload --no-dev --optimize --no-interaction --no-scripts \
 
 EXPOSE 10000
 
-CMD ["bash", "-lc", "PORT=\"${PORT:-10000}\"; echo '===== RUNTIME SSL CHECK ====='; ls -la /etc/secrets/; su -s /bin/sh www-data -c 'test -r /etc/secrets/ca.pem && echo WWW_DATA_CAN_READ_CA || echo WWW_DATA_CANNOT_READ_CA'; if [ -f /etc/secrets/ca.pem ]; then echo 'CA FILE EXISTS'; wc -c /etc/secrets/ca.pem; head -n 1 /etc/secrets/ca.pem; else echo 'CA FILE NOT FOUND'; fi; sed -ri \"s/^Listen 80/Listen ${PORT}/\" /etc/apache2/ports.conf; sed -ri \"s/<VirtualHost \\*:80>/<VirtualHost *:${PORT}>/\" /etc/apache2/sites-available/000-default.conf; exec apache2-foreground"]
+
+CMD ["bash", "-lc", "PORT=\"${PORT:-10000}\"; echo '===== RUNTIME SSL CHECK ====='; ls -la /etc/secrets/; cp /etc/secrets/ca.pem /tmp/aiven-ca.pem && chown root:www-data /tmp/aiven-ca.pem && chmod 640 /tmp/aiven-ca.pem; su -s /bin/sh www-data -c 'test -r /tmp/aiven-ca.pem && echo WWW_DATA_CAN_READ_CA || echo WWW_DATA_CANNOT_READ_CA'; sed -ri \"s/^Listen 80/Listen ${PORT}/\" /etc/apache2/ports.conf; sed -ri \"s/<VirtualHost \\*:80>/<VirtualHost *:${PORT}>/\" /etc/apache2/sites-available/000-default.conf; exec apache2-foreground"]
