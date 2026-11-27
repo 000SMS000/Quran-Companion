@@ -36,6 +36,18 @@ RUN composer install \
 
 COPY . .
 
+# Temporary SSL certificate diagnostics
+RUN echo "===== SSL CERTIFICATE CHECK =====" \
+    && ls -la /etc/secrets/ || true \
+    && if [ -f /etc/secrets/ca.pem ]; then \
+        echo "CA FILE EXISTS"; \
+        wc -c /etc/secrets/ca.pem; \
+        head -n 1 /etc/secrets/ca.pem; \
+        tail -n 1 /etc/secrets/ca.pem; \
+    else \
+        echo "CA FILE NOT FOUND DURING BUILD"; \
+    fi
+
 RUN composer dump-autoload --no-dev --optimize --no-interaction --no-scripts \
     && php artisan package:discover --ansi \
     && mkdir -p storage/framework/cache/data \
@@ -49,4 +61,4 @@ RUN composer dump-autoload --no-dev --optimize --no-interaction --no-scripts \
 
 EXPOSE 10000
 
-CMD ["bash", "-lc", "PORT=\"${PORT:-10000}\"; sed -ri \"s/^Listen 80/Listen ${PORT}/\" /etc/apache2/ports.conf; sed -ri \"s/<VirtualHost \\*:80>/<VirtualHost *:${PORT}>/\" /etc/apache2/sites-available/000-default.conf; exec apache2-foreground"]
+CMD ["bash", "-lc", "PORT=\"${PORT:-10000}\"; echo '===== RUNTIME SSL CHECK ====='; ls -la /etc/secrets/; if [ -f /etc/secrets/ca.pem ]; then echo 'CA FILE EXISTS'; wc -c /etc/secrets/ca.pem; head -n 1 /etc/secrets/ca.pem; else echo 'CA FILE NOT FOUND'; fi; sed -ri \"s/^Listen 80/Listen ${PORT}/\" /etc/apache2/ports.conf; sed -ri \"s/<VirtualHost \\*:80>/<VirtualHost *:${PORT}>/\" /etc/apache2/sites-available/000-default.conf; exec apache2-foreground"]
