@@ -22,3 +22,6 @@ public/build/
 Thumbs.db
 .idea/
 .vscode/
+
+# Aiven SSL certificates
+/backend/storage/certs/
