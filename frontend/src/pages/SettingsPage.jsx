@@ -14,6 +14,16 @@ function SettingsPage() {
   } = usePreferences();
   const { t } = useTranslation();
 
+  function handleReciterChange(event) {
+    const nextEdition = event.target.value;
+
+    if (nextEdition === audioEdition) {
+      return;
+    }
+
+    setAudioEdition(nextEdition);
+    window.location.reload();
+  }
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6 lg:px-8">
@@ -106,7 +116,7 @@ function SettingsPage() {
             <span className="sr-only">{t("settings.audio")}</span>
             <select
               value={audioEdition}
-              onChange={(event) => setAudioEdition(event.target.value)}
+              onChange={handleReciterChange}
               className="w-full rounded-md border border-slate-200 bg-white px-3 py-3 text-slate-900 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/10 dark:border-white/10 dark:bg-slate-900 dark:text-white"
             >
               {AUDIO_EDITIONS.map((edition) => (
