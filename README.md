@@ -1,4 +1,4 @@
-# Quran Companion
+# Siraj
 
 Quran Companion is a Quran reading and study web application with a React/Vite frontend and a Laravel JSON API backend.
 
