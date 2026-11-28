@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -9,34 +9,13 @@ import {
   Pause,
   Play,
 } from "lucide-react";
-import { getEditions, getSurah, getSurahAudio } from "../api/quranApi";
+import { getAyahTafsir, getEditions, getSurah } from "../api/quranApi";
 import { getBookmarks, saveBookmark, deleteBookmark } from "../api/bookmarkApi";
 import ErrorState from "../components/ErrorState";
 import LoadingState from "../components/LoadingState";
 import { useAudioPlayer } from "../contexts/AudioPlayerContext";
-import { usePreferences } from "../contexts/PreferencesContext";
+import { AUDIO_EDITIONS, usePreferences } from "../contexts/PreferencesContext";
 import { useTranslation } from "../hooks/useTranslation";
-
-function withAudioEdition(surah, audioData) {
-  const audioByAyah = new Map(
-    audioData.ayahs.map((ayah) => [
-      ayah.numberInSurah,
-      ayah.audio,
-    ]),
-  );
-
-  return {
-    ...surah,
-    audioEdition: audioData.edition,
-    ayahs: surah.ayahs.map((ayah) => ({
-      ...ayah,
-      audio: audioByAyah.get(ayah.numberInSurah) ?? {
-        url: null,
-        secondary: [],
-      },
-    })),
-  };
-}
 
 function SurahReaderPage() {
   const { number } = useParams();
@@ -48,6 +27,7 @@ function SurahReaderPage() {
     playbackState,
     playbackTrackId,
     playQueue,
+    clearQueue,
     queueSyncError,
     retryQueueSync,
     setTrackPlaybackState,
@@ -62,14 +42,16 @@ function SurahReaderPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedAyah, setSelectedAyah] = useState(null);
+  const [tafsirData, setTafsirData] = useState(null);
+  const [tafsirLoading, setTafsirLoading] = useState(false);
+  const [tafsirError, setTafsirError] = useState(false);
+  const [tafsirRetry, setTafsirRetry] = useState(0);
+  const tafsirCacheRef = useRef(new Map());
+  const tafsirRequestIdRef = useRef(0);
 
   const [bookmarks, setBookmarks] = useState([]);
   const [bookmarkActionKey, setBookmarkActionKey] = useState(null);
   const [bookmarkError, setBookmarkError] = useState("");
-  const audioEditionRef = useRef(audioEdition);
-  const previousAudioEditionRef = useRef(audioEdition);
-  audioEditionRef.current = audioEdition;
-
   useEffect(() => {
     let cancelled = false;
 
@@ -111,6 +93,76 @@ function SurahReaderPage() {
     }
   }, [surah?.number, ayahFromUrl, hasAyahFromUrl]);
 
+  // Follow the currently playing ayah so its tafsir opens automatically.
+  // This only syncs tracks from the surah currently displayed; manual selection
+  // remains independent when playback is paused or belongs to another surah.
+  useEffect(() => {
+    if (!surah || !currentTrack) {
+      return;
+    }
+
+    if (Number(currentTrack.surahNumber) !== surah.number) {
+      return;
+    }
+
+    setSelectedAyah(Number(currentTrack.ayahNumber));
+  }, [surah?.number, currentTrack?.id]);
+
+  // Load tafsir only for the selected ayah; keep responses cached for this page.
+  useEffect(() => {
+    if (!selectedAyah) {
+      tafsirRequestIdRef.current += 1;
+      setTafsirData(null);
+      setTafsirLoading(false);
+      setTafsirError(false);
+      return undefined;
+    }
+
+    const cacheKey = `${number}:${selectedAyah}`;
+    const cachedTafsir = tafsirCacheRef.current.get(cacheKey);
+
+    if (cachedTafsir) {
+      setTafsirData(cachedTafsir);
+      setTafsirLoading(false);
+      setTafsirError(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const requestId = ++tafsirRequestIdRef.current;
+
+    setTafsirData(null);
+    setTafsirLoading(true);
+    setTafsirError(false);
+
+    getAyahTafsir(number, selectedAyah)
+      .then((data) => {
+        if (cancelled || requestId !== tafsirRequestIdRef.current) {
+          return;
+        }
+
+        tafsirCacheRef.current.set(cacheKey, data);
+        setTafsirData(data);
+      })
+      .catch((exception) => {
+        if (cancelled || requestId !== tafsirRequestIdRef.current) {
+          return;
+        }
+
+        console.error("Could not load ayah tafsir:", exception);
+        setTafsirError(true);
+      })
+      .finally(() => {
+        if (!cancelled && requestId === tafsirRequestIdRef.current) {
+          setTafsirLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [number, selectedAyah, tafsirRetry]);
+
   // Scroll automatically to the selected ayah.
   useEffect(() => {
     if (!selectedAyah) {
@@ -140,31 +192,16 @@ function SurahReaderPage() {
       .catch(() => setEditions([]));
   }, []);
 
-  // Load the selected Surah.
+  // Load Quran text and translation from AlQuran Cloud.
   useEffect(() => {
     let cancelled = false;
-    const requestedEdition = audioEditionRef.current;
 
     setLoading(true);
     setError("");
 
-    getSurah(number, { translation, audio: requestedEdition })
+    getSurah(number, { translation })
       .then((data) => {
-        if (cancelled) {
-          return;
-        }
-
-        if (audioEditionRef.current === requestedEdition) {
-          setSurah(data);
-          return;
-        }
-
-        const latestEdition = audioEditionRef.current;
-        return getSurahAudio(number, latestEdition).then((audioData) => {
-          if (!cancelled && audioEditionRef.current === latestEdition) {
-            setSurah(withAudioEdition(data, audioData));
-          }
-        });
+        if (!cancelled) setSurah(data);
       })
       .catch((exception) => {
         if (!cancelled) {
@@ -173,9 +210,7 @@ function SurahReaderPage() {
         }
       })
       .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       });
 
     return () => {
@@ -183,56 +218,44 @@ function SurahReaderPage() {
     };
   }, [number, translation]);
 
+  // EveryAyah serves one MP3 file per ayah for each supported reciter.
+  const tracks = useMemo(() => {
+    if (!surah) return [];
+
+    const selectedEdition =
+      AUDIO_EDITIONS.find((edition) => edition.id === audioEdition) ??
+      AUDIO_EDITIONS[0];
+
+    return surah.ayahs.map((ayah) => {
+      const surahNumber = String(surah.number).padStart(3, "0");
+      const ayahNumber = String(ayah.numberInSurah).padStart(3, "0");
+
+      return {
+        id: `${surah.number}:${ayah.numberInSurah}`,
+        title: `${surah.englishName} · Ayah ${ayah.numberInSurah}`,
+        subtitle: `${selectedEdition.nameEn} · ${selectedEdition.bitrate}`,
+        surahNumber: surah.number,
+        audioEdition,
+        surahEnglishName: surah.englishName,
+        surahArabicName: surah.name,
+        ayahNumber: ayah.numberInSurah,
+        audioUrl: `https://everyayah.com/data/${selectedEdition.folder}/${surahNumber}${ayahNumber}.mp3`,
+      };
+    });
+  }, [surah, audioEdition]);
+
+  // Changing the reciter stops and clears the old audio queue.
+  // The user must explicitly choose an ayah and press play again.
+  const previousAudioEditionRef = useRef(audioEdition);
+
   useEffect(() => {
     if (previousAudioEditionRef.current === audioEdition) {
-      return undefined;
+      return;
     }
 
     previousAudioEditionRef.current = audioEdition;
-    const surahNumber = Number(number);
-    let cancelled = false;
-
-    getSurahAudio(surahNumber, audioEdition)
-      .then((audioData) => {
-        if (cancelled || audioEditionRef.current !== audioEdition) {
-          return;
-        }
-
-        setSurah((currentSurah) =>
-          currentSurah?.number === surahNumber
-            ? withAudioEdition(currentSurah, audioData)
-            : currentSurah,
-        );
-      })
-      .catch((exception) => {
-        if (!cancelled) {
-          console.error("Could not load selected reciter audio:", exception);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [audioEdition, number]);
-
-  // Build audio tracks for all ayahs.
-  const tracks = useMemo(() => {
-    if (!surah) {
-      return [];
-    }
-
-    return surah.ayahs.map((ayah) => ({
-      id: `${surah.number}:${ayah.numberInSurah}`,
-      title: `${surah.englishName} · Ayah ${ayah.numberInSurah}`,
-      subtitle: surah.audioEdition?.englishName,
-      surahNumber: surah.number,
-      audioEdition: surah.audioEdition?.identifier,
-      surahEnglishName: surah.englishName,
-      surahArabicName: surah.name,
-      ayahNumber: ayah.numberInSurah,
-      audioUrl: ayah.audio?.url,
-    }));
-  }, [surah]);
+    clearQueue();
+  }, [audioEdition, clearQueue]);
 
   function handleAyahClick(ayahNumber) {
     setSelectedAyah((current) => (current === ayahNumber ? null : ayahNumber));
@@ -299,33 +322,35 @@ function SurahReaderPage() {
             </div>
 
             <div className="mt-6 grid gap-4 md:grid-cols-2">
-              {/* Translation */}
-              <label className="block">
-                <span className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-300">
-                  <Languages className="h-4 w-4" />
-                  {t("reader.translation")}
-                </span>
+              {/* English translation selector */}
+              {language === "en" && (
+                <label className="block">
+                  <span className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-300">
+                    <Languages className="h-4 w-4" />
+                    {t("reader.translation")}
+                  </span>
 
-                <select
-                  value={translation}
-                  onChange={(event) => setTranslation(event.target.value)}
-                  className="w-full rounded-md border border-slate-200 bg-white px-3 py-3 text-slate-900 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/10 dark:border-white/10 dark:bg-slate-900 dark:text-white"
-                >
-                  <option value="en.sahih">Saheeh International</option>
+                  <select
+                    value={translation}
+                    onChange={(event) => setTranslation(event.target.value)}
+                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-3 text-slate-900 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/10 dark:border-white/10 dark:bg-slate-900 dark:text-white"
+                  >
+                    <option value="en.sahih">Saheeh International</option>
 
-                  {editions
-                    .filter((edition) => edition.identifier !== "en.sahih")
-                    .slice(0, 20)
-                    .map((edition) => (
-                      <option
-                        key={edition.identifier}
-                        value={edition.identifier}
-                      >
-                        {edition.englishName || edition.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
+                    {editions
+                      .filter((edition) => edition.identifier !== "en.sahih")
+                      .slice(0, 20)
+                      .map((edition) => (
+                        <option
+                          key={edition.identifier}
+                          value={edition.identifier}
+                        >
+                          {edition.englishName || edition.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              )}
 
               {/* Font Size */}
               <label className="block">
@@ -391,7 +416,7 @@ function SurahReaderPage() {
                 }
 
                 return (
-                  <span key={ayah.number}>
+                  <Fragment key={ayah.number}>
                     {/* Ayah */}
                     <span
                       id={`ayah-${ayah.numberInSurah}`}
@@ -419,8 +444,8 @@ function SurahReaderPage() {
                     {/* Translation && save */}
 
                     {isSelected && (
-                      <span
-                        dir="ltr"
+                      <div
+                        dir={language === "ar" ? "rtl" : "ltr"}
                         className="my-5 flex items-start gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-start font-sans text-base leading-8 text-slate-600 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-300"
                       >
                         <span className="flex shrink-0 flex-col gap-2">
@@ -542,12 +567,72 @@ function SurahReaderPage() {
                           })()}
                         </span>
 
-                        {ayah.translation?.text && (
-                          <span className="flex-1">{ayah.translation.text}</span>
-                        )}
-                      </span>
+                        <div className="min-w-0 flex-1 space-y-4">
+                          {language === "en" && ayah.translation?.text && (
+                            <section>
+                              <h3 className="mb-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                                {t("reader.translation")}
+                              </h3>
+                              <p>{ayah.translation.text}</p>
+                            </section>
+                          )}
+
+                          <section>
+                            <h3 className="mb-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                              {t("reader.tafsir")}
+                            </h3>
+
+                            {tafsirLoading && (
+                              <p className="flex items-center gap-2 text-sm" role="status">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                {t("reader.tafsirLoading")}
+                              </p>
+                            )}
+
+                            {tafsirError && (
+                              <div className="flex flex-wrap items-center gap-3 text-sm" role="alert">
+                                <span>{t("reader.tafsirError")}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setTafsirRetry((value) => value + 1)}
+                                  className="font-semibold text-emerald-700 underline underline-offset-2 hover:text-emerald-900 dark:text-emerald-300 dark:hover:text-emerald-100"
+                                >
+                                  {t("common.tryAgain")}
+                                </button>
+                              </div>
+                            )}
+
+                            {!tafsirLoading && !tafsirError && tafsirData && (() => {
+                              const languageId = language === "ar" ? 1 : 4;
+                              const book = tafsirData.books?.find(
+                                (item) => Number(item.language_id) === languageId,
+                              );
+
+                              if (!book) {
+                                return <p>{t("reader.tafsirUnavailable")}</p>;
+                              }
+
+                              const range = book.range;
+                              const isCoveredByEarlierAyah =
+                                range?.isShared &&
+                                selectedAyah > Number(range.startAyah) &&
+                                selectedAyah <= Number(range.endAyah);
+
+                              if (isCoveredByEarlierAyah) {
+                                return (
+                                  <p>{t("reader.tafsirIncludedInAyah", {
+                                    number: range.startAyah,
+                                  })}</p>
+                                );
+                              }
+
+                              return <p className="whitespace-pre-line">{book.plain_text || book.text}</p>;
+                            })()}
+                          </section>
+                        </div>
+                      </div>
                     )}
-                  </span>
+                  </Fragment>
                 );
               })}
             </div>

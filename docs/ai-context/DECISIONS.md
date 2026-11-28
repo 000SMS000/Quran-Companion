@@ -22,12 +22,19 @@ This file records confirmed user choices and checked implementation constraints.
 - Do not modify bookmark data as part of unrelated work.
 - Before a requested schema/data migration, inspect its impact and explain it; use an appropriate backup for risky operations.
 
-### 4. Audio edition selection must not reload Quran text unnecessarily
+### 4. Changing the reciter reloads the application
 
 - The selected audio edition is a persisted preference separate from UI language and translation selection.
-- Changing reciter should update the selected track/queue via audio metadata while preserving the active Ayah and whether playback was playing or paused.
-- The selected Ayah's audio controls reflect the shared `AudioPlayerContext` state. Clicking Ayah text only selects it; the control in its translation panel starts playback.
-- These behaviors are present in the current frontend source; real browser/network playback was not verified in the context audit.
+- Changing the reciter from Settings saves the new edition to localStorage synchronously, then performs a full page reload.
+- The user does not require preserving the current Surah or Ayah; after reload, the app returns to its normal initial navigation state.
+- Selecting the already active reciter does not trigger a reload.
+- The audio player and reader initialize using the newly persisted edition after the reload.
+### 5. Initial deployment direction
+
+- The user chose Render for an initial deployment trial, with the frontend as a Static Site and Laravel API as a Docker Web Service.
+- Keep MySQL for now. Render's managed database offering is PostgreSQL, so a separate MySQL provider must be selected before deploying the API.
+- This is a deployment direction, not approval to migrate the production database or change the application's database engine.
+- Preserve guest bookmark data and do not run destructive migrations.
 
 ## Verified implementation details
 

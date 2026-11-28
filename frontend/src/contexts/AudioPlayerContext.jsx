@@ -2,18 +2,14 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
-import { getSurahAudio } from '../api/quranApi';
-import { usePreferences } from './PreferencesContext';
 
 const AudioPlayerContext = createContext(null);
 
 export function AudioPlayerProvider({ children }) {
-  const { audioEdition } = usePreferences();
   const [queue, setQueue] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [playbackState, setPlaybackState] = useState('idle');
@@ -21,26 +17,22 @@ export function AudioPlayerProvider({ children }) {
   const [playbackTrackId, setPlaybackTrackId] = useState(null);
   const [playbackRequestId, setPlaybackRequestId] = useState(0);
   const [playbackRequestedAt, setPlaybackRequestedAt] = useState(null);
-  const [queueSyncError, setQueueSyncError] = useState(false);
-  const [queueSyncAttempt, setQueueSyncAttempt] = useState(0);
+  const queueSyncError = false;
   const queueRef = useRef(queue);
   const currentIndexRef = useRef(currentIndex);
   const activeTrackIdRef = useRef(playbackTrackId);
   const playbackStateRef = useRef(playbackState);
   const playbackIntentRef = useRef(playbackIntent);
-  const queueRevisionRef = useRef(0);
-  const audioEditionRef = useRef(audioEdition);
 
   queueRef.current = queue;
   currentIndexRef.current = currentIndex;
   activeTrackIdRef.current = playbackTrackId;
   playbackStateRef.current = playbackState;
   playbackIntentRef.current = playbackIntent;
-  audioEditionRef.current = audioEdition;
 
   const currentTrack = currentIndex >= 0 ? queue[currentIndex] : null;
 
-  const playQueue = useCallback((tracks, index = 0) => {
+  const playQueue = useCallback((tracks, index = 0, shouldPlay = true) => {
     const playableTracks = tracks.filter((track) => track.audioUrl);
     const target = tracks[index];
     const playableIndex = playableTracks.findIndex(
@@ -58,7 +50,6 @@ export function AudioPlayerProvider({ children }) {
       );
 
     if (queueChanged) {
-      queueRevisionRef.current += 1;
       queueRef.current = playableTracks;
       setQueue(playableTracks);
     }
@@ -70,6 +61,7 @@ export function AudioPlayerProvider({ children }) {
 
     if (
       isSameActiveTrack &&
+      !queueChanged &&
       (playbackStateRef.current === 'loading' ||
         playbackStateRef.current === 'playing') &&
       playbackIntentRef.current
@@ -79,7 +71,7 @@ export function AudioPlayerProvider({ children }) {
 
     activeTrackIdRef.current = selectedTrack?.id ?? null;
     setPlaybackTrackId(selectedTrack?.id ?? null);
-    playbackIntentRef.current = Boolean(selectedTrack);
+    playbackIntentRef.current = Boolean(selectedTrack) && shouldPlay;
     setPlaybackIntent(playbackIntentRef.current);
     playbackStateRef.current = selectedTrack ? 'loading' : 'idle';
     setPlaybackState(playbackStateRef.current);
@@ -93,6 +85,22 @@ export function AudioPlayerProvider({ children }) {
         queueSelectionDurationMs: performance.now() - requestedAt,
       });
     }
+  }, []);
+
+  const clearQueue = useCallback(() => {
+    queueRef.current = [];
+    currentIndexRef.current = -1;
+    activeTrackIdRef.current = null;
+    playbackIntentRef.current = false;
+    playbackStateRef.current = 'idle';
+
+    setQueue([]);
+    setCurrentIndex(-1);
+    setPlaybackTrackId(null);
+    setPlaybackIntent(false);
+    setPlaybackState('idle');
+    setPlaybackRequestId((requestId) => requestId + 1);
+    setPlaybackRequestedAt(performance.now());
   }, []);
 
   const setTrackPlaybackState = useCallback((trackId, nextState) => {
@@ -150,120 +158,9 @@ export function AudioPlayerProvider({ children }) {
   }, [selectRelativeTrack]);
 
   const retryQueueSync = useCallback(() => {
-    setQueueSyncError(false);
-    playbackIntentRef.current = true;
-    setPlaybackIntent(true);
-    setQueueSyncAttempt((attempt) => attempt + 1);
-  }, []);
-
-  useEffect(() => {
-    if (!currentTrack) {
-      setQueueSyncError(false);
-      return undefined;
-    }
-
-    if (currentTrack.audioEdition === audioEdition) {
-      setQueueSyncError(false);
-      return undefined;
-    }
-
-    const surahNumber = currentTrack.surahNumber;
-
-    if (!surahNumber || !currentTrack.ayahNumber) {
-      setQueueSyncError(true);
-      console.error(
-        'Cannot update audio track with incomplete Surah or Ayah identifiers.',
-      );
-      setTrackPlaybackState(currentTrack.id, 'error');
-      return undefined;
-    }
-
-    let cancelled = false;
-    const queueRevision = queueRevisionRef.current;
-    const selectedTrackId = currentTrack.id;
-    const requestedAt = performance.now();
-    setQueueSyncError(false);
-    setTrackPlaybackState(selectedTrackId, 'loading');
     setPlaybackRequestId((requestId) => requestId + 1);
-    setPlaybackRequestedAt(requestedAt);
-
-    getSurahAudio(surahNumber, audioEdition)
-      .then((surahAudio) => {
-        if (cancelled) {
-          return;
-        }
-
-        const audioUrls = new Map(
-          surahAudio.ayahs.map((ayah) => [
-            ayah.numberInSurah,
-            ayah.audio?.url,
-          ]),
-        );
-
-        if (!audioUrls.get(currentTrack.ayahNumber)) {
-          throw new Error(
-            'The selected audio edition has no URL for the active Ayah.',
-          );
-        }
-
-        setQueue((currentQueue) => {
-          if (
-            audioEditionRef.current !== audioEdition ||
-            queueRevisionRef.current !== queueRevision ||
-            activeTrackIdRef.current !== selectedTrackId
-          ) {
-            return currentQueue;
-          }
-
-          const nextQueue = currentQueue.map((track) => {
-            if (track.surahNumber !== surahNumber) {
-              return track;
-            }
-
-            const audioUrl = audioUrls.get(track.ayahNumber);
-            return audioUrl
-              ? {
-                  ...track,
-                  audioEdition,
-                  audioUrl,
-                  subtitle: surahAudio.edition?.englishName,
-                }
-              : track;
-          });
-          queueRef.current = nextQueue;
-          return nextQueue;
-        });
-
-        if (import.meta.env.DEV) {
-          console.debug('Audio edition metadata resolved', {
-            surahNumber,
-            audioEdition,
-            durationMs: performance.now() - requestedAt,
-            ayahCount: surahAudio.ayahs.length,
-          });
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          console.error('Could not update the audio queue:', error);
-          setQueueSyncError(true);
-          setTrackPlaybackState(selectedTrackId, 'error');
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    audioEdition,
-    currentTrack?.audioEdition,
-    currentTrack?.ayahNumber,
-    currentTrack?.id,
-    currentTrack?.surahNumber,
-    queue,
-    queueSyncAttempt,
-    setTrackPlaybackState,
-  ]);
+    setPlaybackRequestedAt(performance.now());
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -279,6 +176,7 @@ export function AudioPlayerProvider({ children }) {
       canPlayNext: currentIndex >= 0 && currentIndex < queue.length - 1,
       canPlayPrevious: currentIndex > 0,
       playQueue,
+      clearQueue,
       playNext,
       playPrevious,
       retryQueueSync,
@@ -296,6 +194,7 @@ export function AudioPlayerProvider({ children }) {
       playbackRequestedAt,
       queueSyncError,
       playQueue,
+      clearQueue,
       playNext,
       playPrevious,
       retryQueueSync,

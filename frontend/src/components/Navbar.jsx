@@ -25,7 +25,7 @@ function Navbar() {
               <BookOpen className="h-5 w-5" />
             </span>
 
-            <span className="font-semibold">Quran Companion</span>
+            <span className="font-semibold">سراج <span className="text-emerald-700 dark:text-emerald-300">Siraj</span></span>
           </Link>
         </div>
 

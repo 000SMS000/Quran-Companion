@@ -15,7 +15,7 @@ function HomePage() {
       <section className="mx-auto grid max-w-7xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[1.2fr_0.8fr] lg:px-8 lg:py-24">
         <div>
           <p className="text-sm font-medium uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">
-            Quran Companion
+            سراج · Siraj
           </p>
           <h1 className="mt-5 max-w-4xl text-5xl font-semibold leading-tight text-slate-950 dark:text-white">
             {t('home.title')}

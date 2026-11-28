@@ -9,11 +9,7 @@ import {
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AudioPlayer from "../components/AudioPlayer";
-import {
-  getEditions,
-  getSurah,
-  getSurahAudio,
-} from "../api/quranApi";
+import { getAyahTafsir, getEditions, getSurah } from "../api/quranApi";
 import { getBookmarks } from "../api/bookmarkApi";
 import { AudioPlayerProvider } from "../contexts/AudioPlayerContext";
 import {
@@ -23,9 +19,9 @@ import {
 import SurahReaderPage from "./SurahReaderPage";
 
 vi.mock("../api/quranApi", () => ({
+  getAyahTafsir: vi.fn(),
   getEditions: vi.fn(),
   getSurah: vi.fn(),
-  getSurahAudio: vi.fn(),
 }));
 
 vi.mock("../api/bookmarkApi", () => ({
@@ -37,6 +33,7 @@ vi.mock("../api/bookmarkApi", () => ({
 afterEach(() => {
   cleanup();
   document.body.innerHTML = "";
+  vi.restoreAllMocks();
 });
 
 const surahData = {
@@ -46,21 +43,18 @@ const surahData = {
   englishNameTranslation: "The Test",
   numberOfAyahs: 2,
   revelationType: "Meccan",
-  audioEdition: { identifier: "ar.alafasy", englishName: "Alafasy" },
   ayahs: [
     {
       number: 1,
       numberInSurah: 1,
       text: "AYAH_ONE",
       translation: { text: "Translation one" },
-      audio: { url: "https://audio.example/alafasy/1.mp3" },
     },
     {
       number: 2,
       numberInSurah: 2,
       text: "AYAH_TWO",
       translation: { text: "Translation two" },
-      audio: { url: "https://audio.example/alafasy/2.mp3" },
     },
   ],
 };
@@ -71,7 +65,7 @@ function ReciterSwitcher() {
   return (
     <button
       type="button"
-      onClick={() => setAudioEdition("ar.abdulbasitmurattal")}
+      onClick={() => setAudioEdition("everyayah.alafasy.128")}
     >
       Change reciter
     </button>
@@ -108,26 +102,13 @@ describe("SurahReaderPage audio controls", () => {
   beforeEach(() => {
     cleanup();
     localStorage.clear();
+    getAyahTafsir.mockResolvedValue({ books: [] });
     getEditions.mockResolvedValue([]);
     getBookmarks.mockResolvedValue([]);
     getSurah.mockResolvedValue(surahData);
-    getSurahAudio.mockImplementation(async (number, edition) => ({
-      number,
-      edition: {
-        identifier: edition,
-        englishName:
-          edition === "ar.alafasy" ? "Alafasy" : "Abdul Basit",
-      },
-      ayahs: surahData.ayahs.map((ayah) => ({
-        numberInSurah: ayah.numberInSurah,
-        audio: {
-          url: `https://audio.example/${edition}/${ayah.numberInSurah}.mp3`,
-          secondary: [],
-        },
-      })),
-    }));
 
     HTMLElement.prototype.scrollIntoView = vi.fn();
+    HTMLMediaElement.prototype.load = vi.fn();
     audioPlay = vi.fn(function () {
       Object.defineProperty(this, "paused", {
         configurable: true,
@@ -154,7 +135,7 @@ describe("SurahReaderPage audio controls", () => {
     });
   });
 
-  it("only selects an Ayah when its text is clicked, then loads and pauses through its translation control", async () => {
+  it("only selects an Ayah when its text is clicked, then plays and pauses it", async () => {
     const { container } = renderReader();
     await screen.findByText("AYAH_ONE");
     const audio = container.querySelector("audio");
@@ -172,7 +153,9 @@ describe("SurahReaderPage audio controls", () => {
       await screen.findByRole("button", { name: "Pause verse audio" }),
     ).toBeTruthy();
     expect(audioPlay).toHaveBeenCalledTimes(1);
-    expect(audio.src).toBe("https://audio.example/alafasy/1.mp3");
+    expect(audio.src).toBe(
+      "https://everyayah.com/data/Minshawy_Murattal_128kbps/001001.mp3",
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Pause verse audio" }));
     await waitFor(() => expect(audioPause).toHaveBeenCalled());
@@ -187,7 +170,7 @@ describe("SurahReaderPage audio controls", () => {
     ).toBeTruthy();
   });
 
-  it("keeps the active Ayah playing through a reciter change without reloading Surah text", async () => {
+  it("clears the active queue when the reciter changes and requires an explicit new play", async () => {
     const { container } = renderReader();
     await screen.findByText("AYAH_ONE");
     await act(async () => fireEvent.click(screen.getAllByText("AYAH_ONE")[0]));
@@ -197,15 +180,23 @@ describe("SurahReaderPage audio controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Change reciter" }));
 
     await waitFor(() => {
-      expect(container.querySelector("audio").src).toBe(
-        "https://audio.example/ar.abdulbasitmurattal/1.mp3",
-      );
+      expect(container.querySelector("audio").src).toBe("");
     });
-    await waitFor(() => expect(audioPlay).toHaveBeenCalledTimes(2));
+    expect(audioPlay).toHaveBeenCalledTimes(1);
     expect(getSurah).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Play verse 1" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Pause verse audio" }),
+    ).toBeTruthy();
+    expect(audioPlay).toHaveBeenCalledTimes(2);
+    expect(container.querySelector("audio").src).toBe(
+      "https://everyayah.com/data/Alafasy_128kbps/001001.mp3",
+    );
   });
 
-  it("keeps a paused Ayah paused when the reciter changes", async () => {
+  it("does not resume playback automatically when the reciter changes while paused", async () => {
     const { container } = renderReader();
     await screen.findByText("AYAH_ONE");
     await act(async () => fireEvent.click(screen.getAllByText("AYAH_ONE")[0]));
@@ -219,17 +210,9 @@ describe("SurahReaderPage audio controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Change reciter" }));
 
     await waitFor(() => {
-      expect(container.querySelector("audio").src).toBe(
-        "https://audio.example/ar.abdulbasitmurattal/1.mp3",
-      );
+      expect(container.querySelector("audio").src).toBe("");
     });
     expect(audioPlay).toHaveBeenCalledTimes(1);
-    await act(async () => {
-      container.querySelector("audio").dispatchEvent(new Event("canplay"));
-    });
-    expect(
-      screen.getByRole("button", { name: "Play verse 1" }),
-    ).toBeTruthy();
   });
 
   it("shows a retryable error when playback fails", async () => {
@@ -247,7 +230,7 @@ describe("SurahReaderPage audio controls", () => {
       }),
     ).toBeTruthy();
     expect(container.querySelector("audio").src).toBe(
-      "https://audio.example/alafasy/1.mp3",
+      "https://everyayah.com/data/Minshawy_Murattal_128kbps/001001.mp3",
     );
 
     audioPlay.mockImplementation(function () {

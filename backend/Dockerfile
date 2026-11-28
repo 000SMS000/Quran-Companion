@@ -1,0 +1,65 @@
+FROM php:8.4-apache
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    unzip \
+    libcurl4-openssl-dev \
+    libicu-dev \
+    libonig-dev \
+    libxml2-dev \
+    libzip-dev \
+    && docker-php-ext-install -j"$(nproc)" \
+        bcmath \
+        curl \
+        exif \
+        intl \
+        mbstring \
+        pdo_mysql \
+        pcntl \
+        zip \
+    && a2enmod rewrite headers \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+WORKDIR /var/www/html
+
+COPY composer.json composer.lock ./
+
+RUN composer install \
+    --no-dev \
+    --no-interaction \
+    --prefer-dist \
+    --no-progress \
+    --no-scripts \
+    --optimize-autoloader
+
+COPY . .
+
+# Temporary SSL certificate diagnostics
+RUN echo "===== SSL CERTIFICATE CHECK =====" \
+    && ls -la /etc/secrets/ || true \
+    && if [ -f /etc/secrets/ca.pem ]; then \
+        echo "CA FILE EXISTS"; \
+        wc -c /etc/secrets/ca.pem; \
+        head -n 1 /etc/secrets/ca.pem; \
+        tail -n 1 /etc/secrets/ca.pem; \
+    else \
+        echo "CA FILE NOT FOUND DURING BUILD"; \
+    fi
+
+RUN composer dump-autoload --no-dev --optimize --no-interaction --no-scripts \
+    && php artisan package:discover --ansi \
+    && mkdir -p storage/framework/cache/data \
+                storage/framework/sessions \
+                storage/framework/views \
+                storage/logs \
+                bootstrap/cache \
+    && chown -R www-data:www-data storage bootstrap/cache \
+    && sed -ri 's!/var/www/html!/var/www/html/public!g' /etc/apache2/sites-available/000-default.conf \
+    && printf '\n<Directory /var/www/html/public>\n    AllowOverride All\n    Require all granted\n</Directory>\n' >> /etc/apache2/apache2.conf
+
+EXPOSE 10000
+
+
+CMD ["bash", "-lc", "PORT=\"${PORT:-10000}\"; echo '===== RUNTIME SSL CHECK ====='; ls -la /etc/secrets/; cp /etc/secrets/ca.pem /tmp/aiven-ca.pem && chown root:www-data /tmp/aiven-ca.pem && chmod 640 /tmp/aiven-ca.pem; su -s /bin/sh www-data -c 'test -r /tmp/aiven-ca.pem && echo WWW_DATA_CAN_READ_CA || echo WWW_DATA_CANNOT_READ_CA'; sed -ri \"s/^Listen 80/Listen ${PORT}/\" /etc/apache2/ports.conf; sed -ri \"s/<VirtualHost \\*:80>/<VirtualHost *:${PORT}>/\" /etc/apache2/sites-available/000-default.conf; exec apache2-foreground"]
