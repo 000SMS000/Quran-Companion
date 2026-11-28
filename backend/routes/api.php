@@ -9,7 +9,7 @@ use App\Http\Middleware\EnsureBookmarkOwner;
 Route::get('/health', function () {
     return response()->json([
         'status' => 'ok',
-        'message' => 'Quran Companion Laravel API is running.',
+        'message' => 'Siraj API is running.',
     ]);
 });
 
