@@ -35,7 +35,7 @@ class EnsureBookmarkOwner
                     app()->environment('production'),
                     true,
                     false,
-                    'lax'
+                    'none'
                 )
             );
         }
