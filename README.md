@@ -1,21 +1,54 @@
-# Siraj
+# Siraj | سراج
 
-Quran Companion is a Quran reading and study web application with a React/Vite frontend and a Laravel JSON API backend.
+**Siraj** is a Quran reading and study web application. It helps readers explore the Quran, read translations and tafsir, listen to recitations, search for ayahs, and save verses to return to later.
 
-Current features include Quran reading, translations, search, audio reciters and playback, Arabic/English tafsir, settings, and guest bookmarks.
+**سراج** تطبيق لقراءة القرآن الكريم وتدبّره، يتيح تصفّح السور والآيات، والاطلاع على الترجمات والتفسير، والاستماع إلى التلاوات، والبحث في الآيات، وحفظ الآيات للرجوع إليها لاحقًا.
+
+## Live Application
+
+- **Frontend:** https://siraj-frontend-mzfh.onrender.com
+- **Backend API:** https://siraj-urg4.onrender.com
+- **API health check:** https://siraj-urg4.onrender.com/api/health
+
+The live services are hosted on Render. Availability and response time may vary depending on the hosting plan.
+
+## Features
+
+- Browse all Quran surahs and read their ayahs.
+- Read Quran translations.
+- View **Mukhtasar Tafsir** in Arabic and English where available.
+- Listen to recitations and choose a preferred reciter.
+- Search the Quran for words and phrases.
+- Save and remove ayahs using guest bookmarks, without requiring an account.
+- Choose Arabic or English for the interface.
+- Switch between light and dark appearance.
+
+## Technology Stack
+
+| Part | Technologies |
+|---|---|
+| Frontend | React 19, Vite, Tailwind CSS, Axios, React Router |
+| Backend | Laravel 13, PHP 8.4, REST API |
+| Database | MySQL |
+| Hosting | Render (Static Site + Docker Web Service) |
 
 ## Project Structure
 
 ```text
-frontend/  React, Vite, Tailwind CSS, Axios
-backend/   Laravel 13 REST API, MySQL-compatible database
+frontend/  React application
+backend/   Laravel API
 ```
 
 ## Local Development
 
-### Backend
+### Requirements
 
-Requirements: PHP 8.3+, Composer, and MySQL.
+- PHP 8.4 or a compatible supported PHP version
+- Composer
+- Node.js and npm
+- MySQL
+
+### 1. Backend setup
 
 ```bash
 cd backend
@@ -24,9 +57,12 @@ cp .env.example .env
 php artisan key:generate
 ```
 
-Configure the database and frontend origin in `backend/.env`:
+Configure the database connection and frontend origin in `backend/.env`:
 
 ```env
+APP_NAME="Siraj"
+APP_URL=http://localhost:8000
+
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
 DB_PORT=3306
@@ -34,11 +70,10 @@ DB_DATABASE=quran_companion
 DB_USERNAME=root
 DB_PASSWORD=
 
-APP_URL=http://localhost:8000
 FRONTEND_URL=http://localhost:5173
 ```
 
-Run migrations on your local development database:
+Run the database migrations:
 
 ```bash
 php artisan migrate
@@ -50,125 +85,116 @@ Start the API:
 php artisan serve --host=127.0.0.1 --port=8000
 ```
 
-Health check: `http://localhost:8000/api/health`
+The API health endpoint is available at http://localhost:8000/api/health.
 
-### Frontend
+### 2. Frontend setup
 
-Requirements: Node.js and npm.
+In a separate terminal:
 
 ```bash
 cd frontend
 npm ci
 ```
 
-Create `frontend/.env` from `frontend/.env.example`:
+Create `frontend/.env` using `frontend/.env.example` as a reference:
 
 ```env
 VITE_API_BASE_URL=http://localhost:8000/api
 ```
 
-Start the frontend:
+Start the frontend development server:
 
 ```bash
 npm run dev
 ```
 
-Frontend URL: `http://localhost:5173`
+Open http://localhost:5173.
 
-## Deploying to Render (preparation)
+## Deployment
 
-The repository is structured as two Render services:
+The application is deployed as two services on Render.
 
-- **Frontend:** Render Static Site, with the root directory set to `frontend`.
-- **Backend:** Render Web Service using Docker, with the root directory set to `backend` and its Dockerfile at `backend/Dockerfile`.
-
-This repository does not provision a production database automatically. The app currently uses MySQL. Render's managed database offering is PostgreSQL rather than managed MySQL, so choose a separate managed MySQL provider before deploying the API. Keep the existing database and its data untouched; do not point production at a local development database.
-
-### Frontend service settings
+### Frontend — Static Site
 
 | Setting | Value |
 |---|---|
 | Root Directory | `frontend` |
 | Build Command | `npm ci && npm run build` |
 | Publish Directory | `dist` |
-| Environment Variable | `VITE_API_BASE_URL=https://YOUR-API-SERVICE.onrender.com/api` |
+| Environment Variable | `VITE_API_BASE_URL=https://siraj-urg4.onrender.com/api` |
 
-Because the app uses client-side routing, add a Render rewrite rule from `/*` to `/index.html` with status `200`.
+The frontend uses client-side routing. Configure a rewrite rule on Render:
 
-### Backend service settings
+| Source | Destination | Status |
+|---|---|---|
+| `/*` | `/index.html` | `200` |
+
+### Backend — Docker Web Service
 
 | Setting | Value |
 |---|---|
-| Runtime | Docker |
 | Root Directory | `backend` |
+| Runtime | Docker |
 | Dockerfile Path | `./Dockerfile` |
 | Health Check Path | `/api/health` |
 
-The Docker image uses PHP 8.4 with Apache and the MySQL PHP extension. It listens on Render's `PORT` environment variable and serves Laravel from the `public` directory.
+The Docker image is based on PHP 8.4 with Apache and the MySQL PDO extension. Apache listens on the port supplied by Render.
 
-Configure these environment variables in the Render dashboard (never commit production values):
+### Backend environment
 
-```env
-APP_NAME="Quran Companion"
-APP_ENV=production
-APP_DEBUG=false
-APP_KEY=GENERATE_A_UNIQUE_LARAVEL_KEY
-APP_URL=https://YOUR-API-SERVICE.onrender.com
+Set production environment variables in the Render dashboard. Do not commit production credentials or secret values.
 
-FRONTEND_URL=https://YOUR-FRONTEND.onrender.com
+At minimum, configure:
 
-DB_CONNECTION=mysql
-DB_HOST=YOUR_MYSQL_HOST
-DB_PORT=3306
-DB_DATABASE=YOUR_DATABASE
-DB_USERNAME=YOUR_DATABASE_USER
-DB_PASSWORD=YOUR_DATABASE_PASSWORD
+- `APP_NAME=Siraj`
+- `APP_ENV=production`
+- `APP_DEBUG=false`
+- `APP_KEY` — generate a unique Laravel key and store it only in Render.
+- `APP_URL` — the backend service URL.
+- `FRONTEND_URL` — the exact frontend origin.
+- `DB_CONNECTION`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, and `DB_PASSWORD` — credentials for the production MySQL database.
+- `SESSION_DRIVER`, `CACHE_STORE`, `QUEUE_CONNECTION`, and logging settings appropriate to the deployment.
+- Quran API settings: `QURAN_API_BASE_URL`, `QURAN_API_TIMEOUT`, `QURAN_DEFAULT_TRANSLATION`, and `QURAN_DEFAULT_AUDIO`.
+- Mukhtasar Tafsir settings: `MOKHTASR_API_BASE_URL`, `MOKHTASR_API_CONNECT_TIMEOUT`, `MOKHTASR_API_TIMEOUT`, `MOKHTASR_CACHE_DAYS`, `MOKHTASR_ARABIC_BOOK_ID`, and `MOKHTASR_ENGLISH_BOOK_ID`.
+- `MOKHTASR_API_TOKEN` only when required by the configured tafsir API access.
 
-SESSION_DRIVER=database
-SESSION_SECURE_COOKIE=true
-SESSION_SAME_SITE=lax
-SESSION_DOMAIN=
+Use the values in `backend/.env.example` as a starting point, then set production-specific values in Render. Never copy local database credentials or secret keys into the repository.
 
-CACHE_STORE=database
-QUEUE_CONNECTION=database
-LOG_CHANNEL=stderr
-LOG_LEVEL=info
+### Database and migrations
 
-QURAN_API_BASE_URL=https://api.alquran.cloud/v1
-QURAN_API_TIMEOUT=30
-QURAN_DEFAULT_TRANSLATION=en.sahih
-QURAN_DEFAULT_AUDIO=ar.alafasy
+The deployed API uses an external MySQL database. Keep production data separate from local development data.
 
-MOKHTASR_API_BASE_URL=https://admin.mokhtasr.com/api/v1
-MOKHTASR_API_CONNECT_TIMEOUT=10
-MOKHTASR_API_TIMEOUT=30
-MOKHTASR_CACHE_DAYS=7
-MOKHTASR_ARABIC_BOOK_ID=200
-MOKHTASR_ENGLISH_BOOK_ID=319
+For a new, empty production database, run migrations from the backend service shell:
+
+```bash
+php artisan migrate --force
 ```
 
-Generate the Laravel key locally with `php artisan key:generate --show` from the backend directory, then enter the result directly in Render's `APP_KEY` setting. Do not paste it into GitHub or chat. Add `MOKHTASR_API_TOKEN` in Render only if your configured tafsir API access requires it.
+Before running migrations on a database that already contains data, take a backup and review the pending migrations. **Never run `migrate:fresh`, `db:wipe`, or destructive SQL against a database containing user bookmarks or other data.**
 
-The frontend and API Render subdomains are normally same-site but cross-origin. Keep Axios `withCredentials: true`, Laravel CORS credentials enabled, and `FRONTEND_URL` set to the exact frontend origin. The guest bookmark cookie is issued as Secure in production. If you later use unrelated custom domains for the frontend and API, reassess cookie settings; cross-site cookies generally require `SameSite=None` and `Secure`, and browser third-party-cookie restrictions may still apply.
+Migrations are not run automatically when the container starts.
 
-### Database migration and first deployment
+## Guest Bookmarks and Cookies
 
-1. Provision the external MySQL database and confirm it accepts connections from Render.
-2. Set the production environment variables in the backend service.
-3. Deploy the backend and confirm `/api/health` responds successfully.
-4. Before running migrations against any database that already contains data, take a backup and inspect the migration plan.
-5. For a brand-new empty production database only, open the backend service Shell and run:
+Bookmarks are associated with a guest token stored in a browser cookie; users do not need to create an account.
 
-   ```bash
-   php artisan migrate --force
-   ```
+The frontend and backend are hosted on different origins. The API must allow credentialed CORS requests from the exact frontend origin, and the frontend must send requests with credentials enabled. In production, the guest bookmark cookie is issued with `Secure` and `SameSite=None` so it can be sent with cross-origin API requests. Browser privacy settings may still affect third-party cookie behavior when the frontend and API use unrelated sites.
 
-Do not run `migrate:fresh`, `db:wipe`, or destructive SQL against a database containing bookmarks or other user data. Migrations are intentionally not run automatically by the container startup command.
+## External Services
 
-### Deployment notes
+- [AlQuran Cloud API](https://alquran.cloud/api) — Quran text, translations, and recitation data.
+- [Mukhtasar Tafsir API](https://admin.mokhtasr.com/api/v1) — Arabic and English tafsir content.
+- [Render](https://render.com) — application hosting.
 
-- Render free web services can spin down when idle, so they are suitable for an initial deployment test, not a dependable production launch.
-- Configure the frontend API URL at build time; changing it requires a new frontend build/deploy.
-- Keep `.env`, database credentials, API tokens, and `APP_KEY` out of source control.
-- Test bookmark creation, reload, retrieval, and deletion in a real browser after deployment. Also test audio, tafsir, search, CORS, and cookie behavior over HTTPS.
-- This guide prepares the repository for deployment; it does not mean that a Render service or production database has already been created.
+## Security Notes
+
+- Keep `.env` files, database passwords, API tokens, and Laravel `APP_KEY` out of source control.
+- Keep `APP_DEBUG=false` in production.
+- Use HTTPS for deployed frontend and API services.
+- Back up the production database before making schema changes.
+- Do not expose production credentials in issues, logs, screenshots, or chat messages.
+
+---
+
+**Siraj | سراج**  
+A place to read, listen, reflect, and return to the words of the Quran.
